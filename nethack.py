@@ -67,43 +67,49 @@ class NetHackPlayer(object):
             self.child.send(keys.alignments[self.alignment])
             self.watch()
 
-    def watch (self, expecting=None):
-        self.info = []
+    def watch (self, expecting=None, new_turn = True):
+        if new_turn:
+            self.info = []
+            self.cachedInventory = None
+        if type(expecting) == type(''):
+            expecting = [expecting]
         patterns = ['--More--', pexpect.TIMEOUT]
-        found = False
+        matched = None
         should_print = False
-        while not found:
-            i = self.child.expect (patterns, timeout=4)
+        while matched is None:
+            i = self.child.expect (patterns, timeout=0.5)
             self.screen.printstr(self.child.before)
             if self.child.after != pexpect.TIMEOUT:
                 self.screen.printstr(self.child.after)
             if i == 0:
+                # --More--
                 self.info += self.screen.getArea(self.screen.cursorX - 9, 0, 80, self.screen.cursorY)
                 self.child.send (' ')
                 should_print = True
             elif i == 1:
                 # Timed out
                 if self.screen.getCharAtRelativePos() == '@':
-                    # Next turn
                     msg = self.screen.getRow(0).strip()
                     if len(msg) > 0:
                         self.info += [msg]
-                    found = True
-                    should_print = True
-                elif (not expecting is None) and (self.screen.getRow (
-                  self.screen.cursorY, self.screen.cursorX - len(expecting),
-                  self.screen.cursorX) == expecting):
-                    # Arrived at the expected prompt
-                    found = True
+                    matched = '@'
                     should_print = True
                 elif self.screen.getRow (0)[:40] == 'Do you want your possessions identified?':
                     # You're dead... hand over control
                     self.child.interact()
-                else:
+                    sys.exit()
+                elif not expecting is None:
+                    for prompt in expecting:
+                        if self.screen.getRow (self.screen.cursorY, self.screen.cursorX - len(prompt),
+                           self.screen.cursorX) == prompt:
+                            # Arrived at the expected prompt
+                            matched = prompt
+                            should_print = True
+                if matched is None:
                     print "Expecting", expecting
-                    print "Found '%s'" % (self.screen.getRow (
-                     self.screen.cursorY, self.screen.cursorX - len(expecting),
-                     self.screen.cursorX),)
+                    print "Found '%s'" % self.screen.getRow (
+                     self.screen.cursorY, 0,
+                     self.screen.cursorX)
                     print "Timed out with an unexpected output :-("
                     self.screen.dump()
                     print "Cursor at %d,%d" % (self.screen.cursorY, self.screen.cursorX)
@@ -115,6 +121,7 @@ class NetHackPlayer(object):
                 self.screen.dump()
                 time.sleep(2)
         sys.stdout.flush()
+        return matched
 
     def parseOptions (self, sep, x, y, w, h):
         lines = self.screen.getArea (x, y, w, h)
@@ -129,6 +136,44 @@ class NetHackPlayer(object):
         print "Going %s..." % direction
         self.child.send (keys.go[direction])
         self.watch()
+
+    def quaff (self, potion):
+        print "Quaffing %s..." % potion['description']
+        self.child.send ('q')
+        self.watch('] ', new_turn=False)
+        self.child.send (potion['key'])
+        self.watch()
+
+    def eat (self, food):
+        print "Eating %s..." % food['description']
+        self.child.send ('e')
+        self.watch('] ', new_turn=False)
+        self.child.send (food['key'])
+        ev = self.watch('Stop eating? [yn] (y) ')
+        if ev == 'Stop eating? [yn] (y) ':
+            self.child.send ('y')
+            self.watch()
+
+    def inventory (self, categories=None):
+        if self.cachedInventory is None:
+            self.child.send ('i')
+            self.watch('(end) ', new_turn=False)
+            lines = self.screen.getArea (self.screen.cursorX - 6, 0, h=self.screen.cursorY)
+            self.cachedInventory = []
+            for line in lines:
+                if line.find(' - ') == -1:
+                    category = line.strip()
+                else:
+                    key, item = line.split(' - ', 1)
+                    self.cachedInventory.append({'key': key.strip(),
+                                                 'description':item.strip(),
+                                                 'category': category})
+            self.child.send (' ')
+            self.watch(new_turn=False)
+        if categories is None:
+            return self.cachedInventory
+        else:
+            return [item for item in self.cachedInventory if item['category'] in categories]
 
 class VeryDumbPlayer (NetHackPlayer):
     user = "dumb"
@@ -152,8 +197,30 @@ class VeryDumbPlayer (NetHackPlayer):
             posY = self.screen.cursorY
         self.child.interact()
 
+class Barney (NetHackPlayer):
+    """ I drink and eat all I can and then take a rest. """
+    user = "dumb"
+    passwd = "********"
+    role = "Monk"
+    gender = "Random"
+    alignment = "Random"
+
+    def run(self):
+        done = False
+        while not done:
+            goodies = self.inventory(categories=['Potions', 'Comestibles'])
+            if len(goodies) == 0:
+                done = True
+            else:
+                item = goodies[0]
+                if item['category'] == 'Comestibles':
+                    self.eat(item)
+                else:
+                    self.quaff(item)
+        raise ValueError, 'BERRPP!'
+
 if __name__ == '__main__':
-    a = VeryDumbPlayer()
+    a = Barney()
     a.login()
     a.new_game()
     a.run()
