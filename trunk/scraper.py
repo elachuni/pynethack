@@ -193,7 +193,7 @@ class Screen(object):
             idx += 1
         return val
 
-    def getArea (self, x=1, y=1, w=WIDTH, h=HEIGHT):
+    def getArea (self, x=0, y=0, w=WIDTH, h=HEIGHT):
         return [''.join (row[x:x+w]) for row in self.screen[y:y+h]]
 
     def getRow (self, row, start=0, finish=WIDTH):
