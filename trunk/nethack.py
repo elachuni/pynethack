@@ -51,8 +51,13 @@ class NetHackPlayer(object):
             self.child.send (opts['play nethack!']) # attempt log in
         else:
             raise ValueError, "new_game called, but we're not at the main menu"
-        self.watch ('[ynq] ')
-        self.child.send ('n')
+        match = self.watch (['[ynq] ', ' 10'])
+        if match == '[ynq] ':
+            self.child.send ('n')
+        elif match == ' 10':
+            print "Waiting 10 seconds for old save game to be restored...\n"
+            # Wait 10 seconds for old game to be restored
+            time.sleep(10)
         self.watch ('(end) ')
         if self.screen.getRow(0).find('Role') >= 0:
             self.child.send(keys.roles[self.role])
@@ -154,26 +159,72 @@ class NetHackPlayer(object):
             self.child.send ('y')
             self.watch()
 
+    def sit (self):
+        print "Sitting"
+        self.child.sendline ("#sit")
+        self.watch(new_turn=False)
+
     def inventory (self, categories=None):
         if self.cachedInventory is None:
             self.child.send ('i')
-            self.watch('(end) ', new_turn=False)
-            lines = self.screen.getArea (self.screen.cursorX - 6, 0, h=self.screen.cursorY)
+            more_pages = True
             self.cachedInventory = []
-            for line in lines:
-                if line.find(' - ') == -1:
-                    category = line.strip()
-                else:
-                    key, item = line.split(' - ', 1)
-                    self.cachedInventory.append({'key': key.strip(),
-                                                 'description':item.strip(),
-                                                 'category': category})
-            self.child.send (' ')
+            while more_pages:
+                matched = self.watch(['(end) ', '(1 of 2)', '(2 of 2)'], new_turn=False)
+                        # We need a bit more power in our patterns here!
+                lines = self.screen.getArea (self.screen.cursorX - len(matched), 0, h=self.screen.cursorY)
+                for line in lines:
+                    if line.find(' - ') == -1:
+                        category = line.strip()
+                    else:
+                        key, item = line.split(' - ', 1)
+                        self.cachedInventory.append({'key': key.strip(),
+                                                     'description':item.strip(),
+                                                     'category': category})
+                self.child.send (' ')
+                if matched != '(1 of 2)':
+                    more_pages = False
             self.watch(new_turn=False)
+        print "Self cachedInventory:", self.cachedInventory
         if categories is None:
             return self.cachedInventory
         else:
             return [item for item in self.cachedInventory if item['category'] in categories]
+
+    def myStr (self):
+        """Returns my current strength.  For strength above 18 a floating point number is returned,
+           as in 18/25 -> 18.25.  For 18/** return 19."""
+        attsLine = self.screen.getRow(22, start=23)
+        st = attsLine.find('St:') + 3
+        if attsLine[st:st+5] == '18/**': # Special case this one out
+            return 19
+        else:
+            return float(attsLine[st : attsLine.find(' ', st + 1)].replace('/', '.'))
+
+    def myDex (self):
+        attsLine = self.screen.getRow(22, start=23)
+        dx = attsLine.find('Dx:') + 3
+        return int(attsLine[dx : attsLine.find (' ', dx + 1)])
+
+    def myCon (self):
+        attsLine = self.screen.getRow(22, start=23)
+        co = attsLine.find('Co:') + 3
+        return int(attsLine[co : attsLine.find (' ', co + 1)])
+
+    def myInt (self):
+        attsLine = self.screen.getRow(22, start=23)
+        val = attsLine.find('In:') + 3
+        return int(attsLine[val : attsLine.find (' ', val + 1)])
+
+    def myWis (self):
+        attsLine = self.screen.getRow(22, start=23)
+        wi = attsLine.find('Wi:') + 3
+        return int(attsLine[wi : attsLine.find (' ', wi + 1)])
+
+    def myCha (self):
+        attsLine = self.screen.getRow(22, start=23)
+        ch = attsLine.find('Ch:') + 3
+        return int(attsLine[ch : attsLine.find (' ', ch + 1)])
 
 class VeryDumbPlayer (NetHackPlayer):
     user = "dumb"
@@ -201,12 +252,20 @@ class Barney (NetHackPlayer):
     """ I drink and eat all I can and then take a rest. """
     user = "dumb"
     passwd = "********"
-    role = "Monk"
+    role = "Wizard"
     gender = "Random"
+    race = "Random"
     alignment = "Random"
 
     def run(self):
         done = False
+        print "My Stats:"
+        print "Strength:", self.myStr()
+        print "Dexterity:", self.myDex()
+        print "Constitution:", self.myCon()
+        print "Intelligence:", self.myInt()
+        print "Wisdom:", self.myWis()
+        print "Charisma:", self.myCha()
         while not done:
             goodies = self.inventory(categories=['Potions', 'Comestibles'])
             if len(goodies) == 0:
@@ -217,7 +276,8 @@ class Barney (NetHackPlayer):
                     self.eat(item)
                 else:
                     self.quaff(item)
-        raise ValueError, 'BERRPP!'
+        self.sit()
+        self.child.interact()
 
 if __name__ == '__main__':
     a = Barney()
