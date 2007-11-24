@@ -4,9 +4,9 @@ class VeryDumbPlayer (NetHackPlayer):
     """ Walk around in circles bumping in to walls like a wind-up toy """
     user = "dumb"
     passwd = "********"
-    role = "Priest"
-    race = "Elf"
-    gender = "Random"
+    initialRole = "Priest"
+    initialRace = "Elf"
+    initialGender = "Random"
 
     def run(self):
         directions = ["North", "East", "South", "West"]
@@ -27,20 +27,13 @@ class Barney (NetHackPlayer):
     """ I drink and eat all I can and then take a rest. """
     user = "dumb"
     passwd = "********"
-    role = "Wizard"
-    gender = "Random"
-    race = "Random"
-    alignment = "Random"
+    initialRole = "Wizard"
+    initialGender = "Random"
+    initialRace = "Random"
+    initialAlignment = "Random"
 
     def run(self):
         done = False
-        print "My Stats:"
-        print "Strength:", self.myStr()
-        print "Dexterity:", self.myDex()
-        print "Constitution:", self.myCon()
-        print "Intelligence:", self.myInt()
-        print "Wisdom:", self.myWis()
-        print "Charisma:", self.myCha()
         while not done:
             goodies = self.inventory(categories=['Potions', 'Comestibles'])
             if len(goodies) == 0:
@@ -53,3 +46,36 @@ class Barney (NetHackPlayer):
                     self.quaff(item)
         self.sit()
         self.child.interact()
+
+class Introspective (NetHackPlayer):
+    """ I just print out all my stats and exit """
+    user = "dumb"
+    passwd = "********"
+    def run (self):
+        print "My Stats:"
+        print "Strength:", self.strength()
+        print "Dexterity:", self.dexterity()
+        print "Constitution:", self.constitution()
+        print "Intelligence:", self.intelligence()
+        print "Wisdom:", self.wisdom()
+        print "Charisma:", self.charisma()
+        print "Alignment:", self.alignment()
+        print "Hit points:", self.hitPoints()
+        print "MaxHitPoints:", self.maxHitPoints()
+        print "Gold:", self.gold()
+        print "Dungeon Level:", self.dungeonLevel()
+        print "Power:", self.power()
+        print "Max Power:", self.maxPower()
+        print "Armour Class:", self.armourClass()
+        print "Experience Level:", self.experienceLevel()
+        print "Experience:", self.experience()
+        print "Turn:", self.turn()
+        print "Hunger Status:", self.hungerStatus()
+        print "Confused:", self.confused()
+        print "Stunned:", self.stunned()
+        print "Food poisoned:", self.foodPoisoned()
+        print "Ill:", self.ill()
+        print "Blind:", self.blind()
+        print "Hallucinating:", self.hallucinating()
+        print "Slimed:", self.slimed()
+        print "Encumbrance:", self.encumbrance()

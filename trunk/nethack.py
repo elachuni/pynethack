@@ -26,6 +26,10 @@ import time
 import sys
 
 class NetHackPlayer(object):
+    initialRole = "Random"
+    initialRace = "Random"
+    initialGender = "Random"
+    initialAlignment = "Random"
     def __init__(self):
         self.child = pexpect.spawn ("telnet localhost")
         self.screen = Screen()
@@ -51,25 +55,25 @@ class NetHackPlayer(object):
             self.child.send (opts['play nethack!']) # attempt log in
         else:
             raise ValueError, "new_game called, but we're not at the main menu"
-        match = self.watch (['[ynq] ', ' 10'])
+        match = self.watch (['[ynq] ', 'in 1'])
         if match == '[ynq] ':
             self.child.send ('n')
-        elif match == ' 10':
+        elif match == 'in 1':
             print "Waiting 10 seconds for old save game to be restored...\n"
             # Wait 10 seconds for old game to be restored
             time.sleep(10)
         self.watch ('(end) ')
         if self.screen.getRow(0).find('Role') >= 0:
-            self.child.send(keys.roles[self.role])
+            self.child.send(keys.roles[self.initialRole])
             self.watch ('(end) ')
         if self.screen.getRow(0).find('Race') >= 0:
-            self.child.send(keys.races[self.race])
+            self.child.send(keys.races[self.initialRace])
             self.watch ('(end) ')
         if self.screen.getRow(0).find('Gender') >= 0:
-            self.child.send(keys.genders[self.gender])
+            self.child.send(keys.genders[self.initialGender])
             self.watch ('(end) ')
         if self.screen.getRow(0).find('Alignment') >= 0:
-            self.child.send(keys.alignments[self.alignment])
+            self.child.send(keys.alignments[self.initialAlignment])
             self.watch()
 
     def watch (self, expecting=None, new_turn = True):
@@ -191,38 +195,138 @@ class NetHackPlayer(object):
         else:
             return [item for item in self.cachedInventory if item['category'] in categories]
 
-    def myStr (self):
+    def strength (self):
         """Returns my current strength.  For strength above 18 a floating point number is returned,
            as in 18/25 -> 18.25.  For 18/** return 19."""
-        attsLine = self.screen.getRow(22, start=23)
-        st = attsLine.find('St:') + 3
-        if attsLine[st:st+5] == '18/**': # Special case this one out
+        statLine = self.screen.getRow(22, start=23)
+        st = statLine.find('St:') + 3
+        if statLine[st:st+5] == '18/**': # Special case this one out
             return 19
         else:
-            return float(attsLine[st : attsLine.find(' ', st + 1)].replace('/', '.'))
+            return float(statLine[st : statLine.find(' ', st + 1)].replace('/', '.'))
 
-    def myDex (self):
-        attsLine = self.screen.getRow(22, start=23)
-        dx = attsLine.find('Dx:') + 3
-        return int(attsLine[dx : attsLine.find (' ', dx + 1)])
+    def dexterity (self):
+        statLine = self.screen.getRow(22, start=23)
+        dx = statLine.find('Dx:') + 3
+        return int(statLine[dx : statLine.find (' ', dx + 1)])
 
-    def myCon (self):
-        attsLine = self.screen.getRow(22, start=23)
-        co = attsLine.find('Co:') + 3
-        return int(attsLine[co : attsLine.find (' ', co + 1)])
+    def constitution (self):
+        statLine = self.screen.getRow (22, start=23)
+        co = statLine.find('Co:') + 3
+        return int(statLine[co : statLine.find (' ', co + 1)])
 
-    def myInt (self):
-        attsLine = self.screen.getRow(22, start=23)
-        val = attsLine.find('In:') + 3
-        return int(attsLine[val : attsLine.find (' ', val + 1)])
+    def intelligence (self):
+        statLine = self.screen.getRow (22, start=23)
+        val = statLine.find('In:') + 3
+        return int(statLine[val : statLine.find (' ', val + 1)])
 
-    def myWis (self):
-        attsLine = self.screen.getRow(22, start=23)
-        wi = attsLine.find('Wi:') + 3
-        return int(attsLine[wi : attsLine.find (' ', wi + 1)])
+    def wisdom (self):
+        statLine = self.screen.getRow (22, start=23)
+        wi = statLine.find('Wi:') + 3
+        return int(statLine[wi : statLine.find (' ', wi + 1)])
 
-    def myCha (self):
-        attsLine = self.screen.getRow(22, start=23)
-        ch = attsLine.find('Ch:') + 3
-        return int(attsLine[ch : attsLine.find (' ', ch + 1)])
+    def charisma (self):
+        statLine = self.screen.getRow (22, start=23)
+        ch = statLine.find('Ch:') + 3
+        return int(statLine[ch : statLine.find (' ', ch + 1)])
 
+    def alignment (self):
+        statLine = self.screen.getRow (22, start=60)
+        for align in keys.alignments.keys():
+            if align in statLine:
+                return align
+
+    def hitPoints (self):
+        statLine = self.screen.getRow (23)
+        hp = statLine.find ('HP:') + 3
+        return int(statLine[hp : statLine.find ('(', hp + 1)])
+
+    def maxHitPoints (self):
+        statLine = self.screen.getRow (23)
+        hp = statLine.find ('HP:') + 3
+        hp = statLine.find ('(', hp) + 1
+        return int(statLine[hp : statLine.find (')', hp + 1)])
+
+    def gold (self):
+        statLine = self.screen.getRow (23)
+        val = statLine.find ('$:') + 2
+        return int(statLine[val : statLine.find (' ', val + 1)])
+
+    def dungeonLevel (self):
+        statLine = self.screen.getRow (23)
+        val = statLine.find ('Dlvl:') + 5
+        return int(statLine[val : statLine.find (' ', val + 1)])
+
+    def power (self):
+        statLine = self.screen.getRow (23)
+        val = statLine.find ('Pw:') + 3
+        return int(statLine[val : statLine.find ('(', val + 1)])
+
+    def maxPower (self):
+        statLine = self.screen.getRow (23)
+        val = statLine.find ('Pw:') + 3
+        val = statLine.find ('(', val) + 1
+        return int(statLine[val : statLine.find (')', val + 1)])
+
+    def armourClass (self):
+        statLine = self.screen.getRow (23)
+        val = statLine.find ('AC:') + 3
+        return int(statLine[val : statLine.find (' ', val + 1)])
+
+    def experienceLevel (self):
+        statLine = self.screen.getRow (23)
+        val = statLine.find ('Xp:') + 3
+        return int(statLine[val : statLine.find ('/', val + 1)])
+
+    def experience (self):
+        statLine = self.screen.getRow (23)
+        val = statLine.find ('Xp:') + 3
+        val = statLine.find ('/', val) + 1
+        return int(statLine[val : statLine.find (' ', val + 1)])
+
+    def turn (self):
+        statLine = self.screen.getRow (23)
+        val = statLine.find ('T:') + 2
+        return int(statLine[val : statLine.find (' ', val + 1)])
+
+    def hungerStatus (self):
+        statLine = self.screen.getRow (23, start=40)
+        for stat in ["Satitated", "Hungry", "Weak", "Fainting"]:
+            if stat in statLine:
+                return stat
+        return "Not Hungry"
+
+    def confused (self):
+        statLine = self.screen.getRow (23, start=50)
+        return "Conf" in statLine
+
+    def stunned (self):
+        statLine = self.screen.getRow (23, start=50)
+        return "Stun" in statLine
+
+    def foodPoisoned (self):
+        statLine = self.screen.getRow (23, start=50)
+        return "FoodPois" in statLine
+
+    def ill (self):
+        statLine = self.screen.getRow (23, start=50)
+        return "Ill" in statLine
+
+    def blind (self):
+        statLine = self.screen.getRow (23, start=50)
+        return "Blind" in statLine
+
+    def hallucinating (self):
+        statLine = self.screen.getRow (23, start=50)
+        return "Hallu" in statLine
+
+    def slimed (self):
+        statLine = self.screen.getRow (23, start=50)
+        return "Slime" in statLine
+
+    def encumbrance (self):
+        statLine = self.screen.getRow (23, start=50)
+        for stat in ["Burdened", "Stressed", "Strained", "Overtaxed", "Overloaded"]:
+            if stat in statLine:
+                return stat
+        return "Unemcumbered"
