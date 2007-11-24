@@ -3,10 +3,10 @@
 # You should define your own nethack player (see examples.py on how to do that)
 #
 
-from examples import Introspective
+from examples import VeryDumbPlayer
 
 if __name__ == '__main__':
-    a = Introspective()
+    a = VeryDumbPlayer()
     a.login()
     a.new_game()
     a.run()

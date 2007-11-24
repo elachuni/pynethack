@@ -9,7 +9,7 @@ class VeryDumbPlayer (NetHackPlayer):
     initialGender = "Random"
 
     def run(self):
-        directions = ["North", "East", "South", "West"]
+        directions = ["N", "E", "S", "W"]
         direction = 0
         posX = self.screen.cursorX
         posY = self.screen.cursorY

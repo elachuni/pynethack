@@ -28,7 +28,14 @@ alignments = {'Neutral': 'n',
               'Lawful': 'l',
               'Random': '*'}
 
-go = {'North': 'k',
-      'South': 'j',
-      'East': 'l',
-      'West': 'h'}
+dirs = {'N': 'k', 'North': 'k',
+        'S': 'j', 'South': 'j',
+        'E': 'l', 'East': 'l',
+        'W': 'h', 'West': 'h',
+        'NW': 'y', 'NorthWest': 'y',
+        'NE': 'u', 'NorthEast': 'u',
+        'SW': 'b', 'SouthWest': 'b',
+        'SE': 'n', 'SouthEast': 'n',
+        'D': '>', 'Down': '>',
+        'U': '<', 'Up': '<',
+        '.': '.', 'Stay': '.'}
