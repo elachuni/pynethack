@@ -30,11 +30,18 @@ class NetHackPlayer(object):
     initialRace = "Random"
     initialGender = "Random"
     initialAlignment = "Random"
-    def __init__(self):
+    def __init__(self, user=None, passwd=None):
         self.child = pexpect.spawn ("telnet localhost")
         self.screen = Screen()
+        self.lastSeenTurn = -1 # Used by 'watch', no need to change this
+        self.info = []
+        if not user is None:
+            self.user = user
+        if not passwd is None:
+            self.passwd = passwd
 
     def login(self):
+        """ Enter user/password credentials """
         self.watch ("=> ") # Welcome screen
         opts = self.parseOptions (") ", 1, 13, 40, 4)
         if opts.has_key ("login"):
@@ -49,6 +56,7 @@ class NetHackPlayer(object):
         self.child.sendline (self.passwd)
 
     def new_game(self):
+        """ Start a new game and select role, race, gender and alignment """
         self.watch ("=> ") # We should already be logged in
         opts = self.parseOptions (") ", 1, 13, 40, 6)
         if opts.has_key ("play nethack!"):
@@ -76,15 +84,14 @@ class NetHackPlayer(object):
             self.child.send(keys.alignments[self.initialAlignment])
             self.watch()
 
-    def watch (self, expecting=None, new_turn = True):
-        if new_turn:
-            self.info = []
-            self.cachedInventory = None
+    def watch (self, expecting=None):
+        """ Update the screen and see what happens. """
         if type(expecting) == type(''):
             expecting = [expecting]
         patterns = ['--More--', pexpect.TIMEOUT]
         matched = None
         should_print = False
+        info = []
         while matched is None:
             i = self.child.expect (patterns, timeout=0.5)
             self.screen.printstr(self.child.before)
@@ -92,7 +99,11 @@ class NetHackPlayer(object):
                 self.screen.printstr(self.child.after)
             if i == 0:
                 # --More--
-                self.info += self.screen.getArea(self.screen.cursorX - 9, 0, 80, self.screen.cursorY)
+                if self.screen.cursorY == 0:
+                    msg = self.screen.getRow(0, start=0, finish=self.screen.cursorX - 9).strip()
+                else:
+                    msg = self.screen.getArea(self.screen.cursorX - 9, 0, 80, self.screen.cursorY)
+                info += [msg]
                 self.child.send (' ')
                 should_print = True
             elif i == 1:
@@ -100,7 +111,7 @@ class NetHackPlayer(object):
                 if self.screen.getCharAtRelativePos() == '@':
                     msg = self.screen.getRow(0).strip()
                     if len(msg) > 0:
-                        self.info += [msg]
+                        info += [msg]
                     matched = '@'
                     should_print = True
                 elif self.screen.getRow (0)[:40] == 'Do you want your possessions identified?':
@@ -125,56 +136,170 @@ class NetHackPlayer(object):
                     print "Output so far:", [self.child.before]
                     print "Expecting:", patterns
                     print "Happy hacking!"
-                    sys.exit(-1)
+                    raise ValueError, "Unexpected Output"
             if should_print:
                 self.screen.dump()
                 time.sleep(2)
         sys.stdout.flush()
+        if self.turn() != self.lastSeenTurn:
+            self.info = info
+            self.cachedInventory = None
+            self.lastSeenTurn = self.turn()
+        else:
+            self.info += info
         return matched
 
     def parseOptions (self, sep, x, y, w, h):
+        """ Parse an area of the screen as a list of options. Used for menus only for now """
         lines = self.screen.getArea (x, y, w, h)
         splits = [line.split(sep) for line in lines]
         strips = [(opt[1].strip().lower(), opt[0].strip()) for opt in splits if len(opt) == 2]
         return dict(strips)
 
     def run (self):
+        """ Redefine this feature to give your bot a life! """
         self.child.interact()
 
     def go (self, direction):
+        """ Walk one position in the specified direction.  Direction can be one of
+            'N', 'North'
+            'S', 'South'
+            'W', 'West'
+            'E', 'East'
+            'NW', 'NorthWest'
+            'NE', 'NorthEast'
+            'SW', 'SouthWest'
+            'SE', 'SouthEast'
+            'D', 'Down'
+            'U', 'Up'
+            '.', 'Stay' (stay where you are and do nothing for one turn)
+        """
         print "Going %s..." % direction
-        self.child.send (keys.go[direction])
+        self.child.send (keys.dirs[direction])
+        self.watch()
+
+    def openDoor (self, direction):
+        """ Open a door in the specified direction.  See 'go' for list of possible directions. """
+        self.child.send ('o')
+        matched = self.watch('In what direction? ')
+        if matched == 'In what direction? ':
+            self.child.send (keys.dirs[direction])
+            self.watch()
+
+    def closeDoor (self, direction):
+        """ Close a door in the specified direction.  See 'go' for list of possible directions. """
+        self.child.send ('c')
+        matched = self.watch('In what direction? ')
+        if matched == 'In what direction? ':
+            self.child.send (keys.dirs[direction])
+            self.watch()
+
+    def kick (self, direction):
+        """ Kick in the specified direction.  See 'go' for a list of possible directions. """
+        self.child.send ('k')
+        matched = self.watch('In what direction? ')
+        if matched == 'In what direction? ':
+            self.child.send (keys.dirs[direction])
+            self.watch()
+
+    def fight (self, direction):
+        """ Fight (even if you don't sense a monster) in the specified direction. """
+        self.child.send ('F')
+        self.child.send (keys.dirs[direction])
         self.watch()
 
     def quaff (self, potion):
+        """ Quaff a potion.  'potion' should have been retrieved from our inventory recently. """
         print "Quaffing %s..." % potion['description']
         self.child.send ('q')
-        self.watch('] ', new_turn=False)
-        self.child.send (potion['key'])
-        self.watch()
-
-    def eat (self, food):
-        print "Eating %s..." % food['description']
-        self.child.send ('e')
-        self.watch('] ', new_turn=False)
-        self.child.send (food['key'])
-        ev = self.watch('Stop eating? [yn] (y) ')
-        if ev == 'Stop eating? [yn] (y) ':
-            self.child.send ('y')
+        matched = self.watch('] ')
+        if matched == '] ':
+            self.child.send (potion['key'])
             self.watch()
 
+    def eat (self, food):
+        """ Eat something. 'food' should have been retrieved from our inventory recently. """
+        print "Eating %s..." % food['description']
+        self.child.send ('e')
+        matched = self.watch('] ')
+        if matched == '] ':
+            self.child.send (food['key'])
+            ev = self.watch('Stop eating? [yn] (y) ')
+            if ev == 'Stop eating? [yn] (y) ':
+                self.child.send ('y')
+                self.watch()
+
     def sit (self):
+        """ Sit down for one turn """
         print "Sitting"
         self.child.sendline ("#sit")
-        self.watch(new_turn=False)
+        self.watch()
+
+    def drop (self, item, amount=None):
+        """ Drop an item.  'item' should have been retrieved recently from our inventory.
+            If 'amount' is an integer, drop that amount of items
+            (to drop one gold piece, for example) """
+        self.child.send ('d')
+        if not amount is None:
+            self.child.send (str(amount))
+        self.child.send (item['key'])
+        self.watch()
+
+    def multiDrop (self, items):
+        """ Drop multiple items. 'items' is a list of stuff from our inventory. """
+        self.child.send ('D')
+        self.child.sendline ('a') # All types
+        more_pages = True
+        while more_pages:
+            matched = self.watch (['(end) ', '(1 of 2)', '(2 of 2)'])
+            for i in items:
+                self.child.send (i['key'])
+            self.child.send (' ')
+            if matched != '(1 of 2)':
+                more_pages = False
+        self.watch()
+
+    def pickUp (self, items=None):
+        """ Pick one or more items up off the ground.
+            If only one item is available to be picked up, then it's automatically picked up.
+            Else, if 'items' is None, a list of available items is returned.
+            These items can be passed back in as 'items' to pick up several items at a time. """
+        self.child.send (',')
+        more_pages = True
+        need_to_watch_further = True
+        available = []
+        while more_pages:
+            matched = self.watch (['(end) ', '(1 of 2)', '(2 of 2)'])
+            if matched == '@':
+                need_to_watch_further = False
+            elif items is None:
+                lines = self.screen.getArea (self.screen.cursorX - len(matched), 0, h=self.screen.cursorY)
+                for line in lines:
+                    if line.find(' - ') == -1:
+                        category = line.strip()
+                    else:
+                        key, item = line.split(' - ', 1)
+                        available.append({'key': key.strip(), 'description':item.strip(),
+                                          'category': category})
+                self.child.send (' ')
+            else:
+                for i in items:
+                    self.child.send (i['key'])
+                self.child.send (' ')
+            if matched != '(1 of 2)':
+                more_pages = False
+        self.watch()
+        return available
 
     def inventory (self, categories=None):
+        """ Retrieve your inventory.  'categories' can be a list of strings describing the categories
+            you want to restrict to, as "Weapons", "Potions", etc. """
         if self.cachedInventory is None:
             self.child.send ('i')
             more_pages = True
             self.cachedInventory = []
             while more_pages:
-                matched = self.watch(['(end) ', '(1 of 2)', '(2 of 2)'], new_turn=False)
+                matched = self.watch(['(end) ', '(1 of 2)', '(2 of 2)'])
                         # We need a bit more power in our patterns here!
                 lines = self.screen.getArea (self.screen.cursorX - len(matched), 0, h=self.screen.cursorY)
                 for line in lines:
@@ -188,8 +313,7 @@ class NetHackPlayer(object):
                 self.child.send (' ')
                 if matched != '(1 of 2)':
                     more_pages = False
-            self.watch(new_turn=False)
-        print "Self cachedInventory:", self.cachedInventory
+            self.watch()
         if categories is None:
             return self.cachedInventory
         else:
@@ -206,90 +330,110 @@ class NetHackPlayer(object):
             return float(statLine[st : statLine.find(' ', st + 1)].replace('/', '.'))
 
     def dexterity (self):
+        """ Returns my current dexterity as an int """
         statLine = self.screen.getRow(22, start=23)
         dx = statLine.find('Dx:') + 3
         return int(statLine[dx : statLine.find (' ', dx + 1)])
 
     def constitution (self):
+        """ Returns my current constitution as an int """
         statLine = self.screen.getRow (22, start=23)
         co = statLine.find('Co:') + 3
         return int(statLine[co : statLine.find (' ', co + 1)])
 
     def intelligence (self):
+        """ Returns my current intelligence as an int """
         statLine = self.screen.getRow (22, start=23)
         val = statLine.find('In:') + 3
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def wisdom (self):
+        """ Returns my current wisdom as an int """
         statLine = self.screen.getRow (22, start=23)
         wi = statLine.find('Wi:') + 3
         return int(statLine[wi : statLine.find (' ', wi + 1)])
 
     def charisma (self):
+        """ Returns my current charisma as an int """
         statLine = self.screen.getRow (22, start=23)
         ch = statLine.find('Ch:') + 3
         return int(statLine[ch : statLine.find (' ', ch + 1)])
 
     def alignment (self):
+        """ Returns my current alignment as a string: one of "Lawful", "Chaotic" or "Neutral" """
         statLine = self.screen.getRow (22, start=60)
         for align in keys.alignments.keys():
             if align in statLine:
                 return align
 
     def hitPoints (self):
+        """ Returns my current hit-points as an int """
         statLine = self.screen.getRow (23)
         hp = statLine.find ('HP:') + 3
         return int(statLine[hp : statLine.find ('(', hp + 1)])
 
     def maxHitPoints (self):
+        """ Returns my current maximum hit-points as an int """
         statLine = self.screen.getRow (23)
         hp = statLine.find ('HP:') + 3
         hp = statLine.find ('(', hp) + 1
         return int(statLine[hp : statLine.find (')', hp + 1)])
 
     def gold (self):
+        """ Returns the amount of gold in my purse, as an int """
         statLine = self.screen.getRow (23)
         val = statLine.find ('$:') + 2
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def dungeonLevel (self):
+        """ Returns my current dungeon level as an int """
         statLine = self.screen.getRow (23)
         val = statLine.find ('Dlvl:') + 5
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def power (self):
+        """ Returns my current power as an int """
         statLine = self.screen.getRow (23)
         val = statLine.find ('Pw:') + 3
         return int(statLine[val : statLine.find ('(', val + 1)])
 
     def maxPower (self):
+        """ Returns my current maximum power as an int """
         statLine = self.screen.getRow (23)
         val = statLine.find ('Pw:') + 3
         val = statLine.find ('(', val) + 1
         return int(statLine[val : statLine.find (')', val + 1)])
 
     def armourClass (self):
+        """ Returns my current armour class as an int """
         statLine = self.screen.getRow (23)
         val = statLine.find ('AC:') + 3
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def experienceLevel (self):
+        """ Returns my current experience level as an int.  Compare with 'experience' """
         statLine = self.screen.getRow (23)
         val = statLine.find ('Xp:') + 3
         return int(statLine[val : statLine.find ('/', val + 1)])
 
     def experience (self):
+        """ Returns my current dexterity as an int. Compare with 'experienceLevel' """
         statLine = self.screen.getRow (23)
         val = statLine.find ('Xp:') + 3
         val = statLine.find ('/', val) + 1
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def turn (self):
+        """ Returns the contents of the turn counter as an int """
         statLine = self.screen.getRow (23)
         val = statLine.find ('T:') + 2
+        if val == 1: # find returned -1
+            return -1
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def hungerStatus (self):
+        """ Returns my current hunger status as a string: one of "Satiated", "Not Hungry",
+            "Hungry", "Weak", or "Fainting" """
         statLine = self.screen.getRow (23, start=40)
         for stat in ["Satitated", "Hungry", "Weak", "Fainting"]:
             if stat in statLine:
@@ -297,34 +441,43 @@ class NetHackPlayer(object):
         return "Not Hungry"
 
     def confused (self):
+        """ Returns True if I'm currently confused """
         statLine = self.screen.getRow (23, start=50)
         return "Conf" in statLine
 
     def stunned (self):
+        """ Returns True if I'm currently stunned """
         statLine = self.screen.getRow (23, start=50)
         return "Stun" in statLine
 
     def foodPoisoned (self):
+        """ Returns True if I'm currently food poisoned """
         statLine = self.screen.getRow (23, start=50)
         return "FoodPois" in statLine
 
     def ill (self):
+        """ Returns True if I'm currently ill """
         statLine = self.screen.getRow (23, start=50)
         return "Ill" in statLine
 
     def blind (self):
+        """ Returns True if I'm currently blind """
         statLine = self.screen.getRow (23, start=50)
         return "Blind" in statLine
 
     def hallucinating (self):
+        """ Returns True if I'm currently hallucinating """
         statLine = self.screen.getRow (23, start=50)
         return "Hallu" in statLine
 
     def slimed (self):
+        """ Returns True if I'm currently turning in to a slime """
         statLine = self.screen.getRow (23, start=50)
         return "Slime" in statLine
 
     def encumbrance (self):
+        """ Returns my current encumbrance status as a string: one of "Unencumbered", "Burdened",
+            "Stressed", "Strained", "Overtaxed" or "Overloaded" """
         statLine = self.screen.getRow (23, start=50)
         for stat in ["Burdened", "Stressed", "Strained", "Overtaxed", "Overloaded"]:
             if stat in statLine:
