@@ -206,3 +206,46 @@ class Screen(object):
         if posX < 0 or posX >= WIDTH or posY < 0 or posY >= HEIGHT:
             return None
         return self.screen[posY][posX]
+
+    def matches (self, pattern):
+        """ Returns True if the string appearing right before the cursor matches 'pattern'.
+            'pattern' can contain the following special characters:
+                '#' matches any whole number
+                '*' matches any character
+            Yes, this makes some patterns undescribable (those containing explicit * or # characters that
+            shouldn't match any other character).  I'll worry about them when I come accross them.
+        """
+        # backwards search, backwards logic!
+        pos = self.cursorX - 1
+        for i in range(len(pattern) - 1, -1, -1):
+            if pos < 0:
+                return None
+            if pattern[i] != '*':
+                if pattern[i] != '#':
+                    if self.screen[self.cursorY][pos] != pattern[i]:
+                        return None
+                else:
+                    if not self.screen[self.cursorY][pos].isdigit():
+                        return None
+                    else:
+                        while not (pos <= 0 or not self.screen[self.cursorY][pos - 1].isdigit()):
+                            pos -= 1
+            pos -= 1
+        self._last_match = self.getRow (self.cursorY, start=pos+1, finish=self.cursorX)
+        return True
+
+    def lastMatch (self):
+        """ Returns last match found by 'matches'.  Returns the exact string that matched,
+            not the pattern """
+        if hasattr(self, '_last_match'):
+            return self._last_match
+        else:
+            return None
+
+    def multiMatch (self, patterns):
+        """ Returns the string that appears before the cursor that matches some pattern in 'patterns',
+            or None if none match.  See 'matches' for a list of special characters in the patterns """
+        for pattern in patterns:
+            if self.matches (pattern):
+                return self._last_match
+        return None
