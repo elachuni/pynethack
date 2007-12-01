@@ -31,16 +31,21 @@ class NetHackPlayer(object):
     initialRace = "Random"
     initialGender = "Random"
     initialAlignment = "Random"
-    def __init__(self, user=None, passwd=None):
-        self.child = pexpect.spawn ("telnet localhost")
+    def __init__(self, user=None, passwd=None, host=None):
+        self.user = user
+        self.passwd = passwd
+        if host is None:
+            userstr = (not user is None) and ('-u ' + user) or ''
+            self.child = pexpect.spawn ("nethack %s" % userstr)
+        else:
+            self.host = host
+            self.child = pexpect.spawn ("telnet %s" % host)
         self.screen = Screen()
         self.lastSeenTurn = -1 # Used by 'watch', no need to change this
         self.pendingInteraction = None
         self.info = []
-        if not user is None:
-            self.user = user
-        if not passwd is None:
-            self.passwd = passwd
+        if not self.host is None:
+            self.login()
 
     def send (self, msg):
         """ Sends 'msg' down the wire. """
@@ -55,7 +60,7 @@ class NetHackPlayer(object):
     def login(self):
         """ Enter user/password credentials """
         self.watch ("=> ") # Welcome screen
-        opts = self.parseOptions (") ", 1, 13, 40, 4)
+        opts = self.parseOptions (") ", 1, self.screen.cursorY - 6, 40, 4)
         if opts.has_key ("login"):
             self.send (opts['login']) # attempt log in
         else:
@@ -66,15 +71,13 @@ class NetHackPlayer(object):
         if self.screen.getRow (9).strip() == 'There was a problem with your last entry.':
             raise ValueError, "invalid username"
         self.sendline (self.passwd)
+        self.watch ("=> ")
+        opts = self.parseOptions (") ", 1, 13, 40, 6)
+        if opts.has_key ("play nethack!"):
+            self.send (opts['play nethack!']) # attempt to launch a new game
 
     def new_game(self):
         """ Start a new game and select role, race, gender and alignment """
-        self.watch ("=> ") # We should already be logged in
-        opts = self.parseOptions (") ", 1, 13, 40, 6)
-        if opts.has_key ("play nethack!"):
-            self.send (opts['play nethack!']) # attempt log in
-        else:
-            raise ValueError, "new_game called, but we're not at the main menu"
         match = self.watch (['[ynq] ', 'in 1'])
         if match == '[ynq] ':
             self.send ('n')
