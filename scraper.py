@@ -18,6 +18,8 @@ class Screen(object):
         self.attrs = [[0] * WIDTH for x in range(HEIGHT)]
         self.cursorX = 0
         self.cursorY = 0
+        self.savedCursorX = 0
+        self.savedCursorY = 0
         self.charSet = "default"
         self.G0 = "default"
         self.G1 = "default"
@@ -40,6 +42,8 @@ class Screen(object):
                                  "[C": self.cursorRight,
                                  "[$m": self.setCharacterAtts,
                                  "[m": self.resetCharAtts,
+                                 "7": self.saveCursor, # Save cursor position and attributes
+                                 "8": self.loadCursor # Restore cursor position and attributes
                                 }
 
     def dump(self):
@@ -154,6 +158,14 @@ class Screen(object):
             self.G1 = charset
         else:
             raise ValueError, "Unknown charset " + cmd
+
+    def saveCursor (self, cmd):
+        self.savedCursorX = self.cursorX
+        self.savedCursorY = self.cursorY
+
+    def restoreCursor (self, cmd):
+        self.cursorX = self.savedCursorX
+        self.cursorY = self.savedCursorY
 
     def cursorRight (self, cmd):
         self.cursorX += 1
