@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Run against DGameLaunch:
+# Run locally or against DGameLaunch:
 #    ftp://ftp.alt.org/pub/dgamelaunch/
 
 import pexpect
@@ -24,7 +24,8 @@ from scraper import Screen
 import nethackkeys as keys
 import time
 import sys
-from interactions import checkPendingInteraction, YesNoInteraction, MultipleSelectInteraction
+from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, MultipleSelectInteraction, DirectionInteraction, Information
+from items import Item
 
 class NetHackPlayer(object):
     initialRole = "Random"
@@ -34,6 +35,7 @@ class NetHackPlayer(object):
     def __init__(self, user=None, passwd=None, host=None):
         self.user = user
         self.passwd = passwd
+        self.host = host
         if host is None:
             userstr = (not user is None) and ('-u ' + user) or ''
             self.child = pexpect.spawn ("nethack %s" % userstr)
@@ -43,7 +45,8 @@ class NetHackPlayer(object):
         self.screen = Screen()
         self.lastSeenTurn = -1 # Used by 'watch', no need to change this
         self.pendingInteraction = None
-        self.info = []
+        self.info = None
+        self.cachedInventory = None
         if not self.host is None:
             self.login()
 
@@ -58,7 +61,8 @@ class NetHackPlayer(object):
         self.child.sendline (msg)
 
     def login(self):
-        """ Enter user/password credentials """
+        """ Enter user/password credentials.
+            This is only needed when running against a remotely hosted server. """
         self.watch ("=> ") # Welcome screen
         opts = self.parseOptions (") ", 1, self.screen.cursorY - 6, 40, 4)
         if opts.has_key ("login"):
@@ -78,35 +82,36 @@ class NetHackPlayer(object):
 
     def new_game(self):
         """ Start a new game and select role, race, gender and alignment """
-        match = self.watch (['[ynq] ', 'in 1'])
+        match = self.watch ([r'\[ynq\] ', r'in 1'])
         if match == '[ynq] ':
             self.send ('n')
         elif match == 'in 1':
             print "Waiting 10 seconds for old save game to be restored...\n"
             # Wait 10 seconds for old game to be restored
             time.sleep(11)
-        self.watch ('(end) ')
+        self.watch (r'\(end\) ')
         if self.screen.getRow(0).find('Role') >= 0:
             self.send(keys.roles[self.initialRole])
-            self.watch ('(end) ')
+            self.watch (r'\(end\) ')
         if self.screen.getRow(0).find('Race') >= 0:
             self.send(keys.races[self.initialRace])
-            self.watch ('(end) ')
+            self.watch (r'\(end\) ')
         if self.screen.getRow(0).find('Gender') >= 0:
             self.send(keys.genders[self.initialGender])
-            self.watch ('(end) ')
+            self.watch (r'\(end\) ')
         if self.screen.getRow(0).find('Alignment') >= 0:
             self.send(keys.alignments[self.initialAlignment])
             self.watch()
 
     def watch (self, expecting=None):
         """ Update the screen and see what happens. """
-        if type(expecting) == type(''):
+        if isinstance(expecting, basestring):
             expecting = [expecting]
         patterns = ['--More--', pexpect.TIMEOUT]
         matched = None
+        found = False
         info = []
-        while matched is None:
+        while not found:
             i = self.child.expect (patterns, timeout=0.5)
             self.screen.printstr(self.child.before)
             if self.child.after != pexpect.TIMEOUT:
@@ -114,24 +119,50 @@ class NetHackPlayer(object):
             if i == 0:
                 # --More--
                 if self.screen.cursorY == 0:
-                    msg = self.screen.getRow(0, start=0, finish=self.screen.cursorX - 9).strip()
+                    msg = [self.screen.getRow(0, start=0, finish=self.screen.cursorX - 9).strip()]
                 else:
                     msg = self.screen.getArea(self.screen.cursorX - 9, 0, 80, self.screen.cursorY)
-                info += [msg]
+                info += msg
                 self.send (' ')
             elif i == 1:
-                # Timed out
-                if self.screen.getRow (0)[:40] == 'Do you want your possessions identified?':
-                    # You're dead... hand over control
-                    self.child.interact()
-                    sys.exit()
-                elif not expecting is None:
+                # Timed out.
+                #  First: attempt to match what the user is expecting.
+                if not expecting is None:
                     matched = self.screen.multiMatch(expecting)
-                if matched is None:
-                    msg = self.screen.getRow(0).strip()
-                    if len(msg) > 0:
-                        info += [msg]
-                    matched = '@'
+                    if not matched is None:
+                        found = True
+                #  Next: Test for a YesNo interaction:
+                if not found:
+                    print "Not found yet"
+                    if self.screen.matches (r'.* \[yn\]( \(.\))? ?'):
+                        print "Matches YesNo"
+                        matched = YesNoInteraction (self, self.screen.lastMatch())
+                        found = True
+                    elif self.screen.matches (r'.* \[ynq\]( \(.\))? ?'):
+                        print "Matches YesNoQuit"
+                        matched = YesNoQuitInteraction (self, self.screen.lastMatch())
+                        found = True
+                    elif self.screen.matches (r'.* \[.* or \?\*\] '):
+                        print "MatchesSelect"
+                        matched = SelectInteraction (self, self.screen.lastMatch())
+                        found = True
+                    elif self.screen.matches (r'\(end\) |\(\d of\d\) '):
+                        print "Matches MultiSelect"
+                        matched = MultipleSelectInteraction (self)
+                        found = True
+                    elif self.screen.matches (r'In what direction\? '):
+                        print "Matches Direction"
+                        matched = DirectionInteraction (self, self.screen.lastMatch())
+                        found = True
+                    #elif... free entry option
+                    #elif... select position interaction
+                    #  Finally, assume the next turn is ready, and hand over control
+                    else:
+                        print "Matches nothing, must be an info"
+                        msg = self.screen.getRow(0).strip()
+                        if len(msg) > 0:
+                            info += [msg]
+                        found = True
                 #if matched is None:
                     #print "Expecting", expecting
                     #print "Found '%s'" % self.screen.getRow (
@@ -145,12 +176,11 @@ class NetHackPlayer(object):
                     #print "Happy hacking!"
                     #raise ValueError, "Unexpected Output"
             self.screen.dump()
+        if len(info) > 0:
+            self.info = matched = Information (self, info)
         if self.turn() != self.lastSeenTurn:
-            self.info = info
             self.cachedInventory = None
             self.lastSeenTurn = self.turn()
-        else:
-            self.info += info
         return matched
 
     def parseOptions (self, sep, x, y, w, h):
@@ -178,67 +208,62 @@ class NetHackPlayer(object):
             'U', 'Up'
             '.', 'Stay' (stay where you are and do nothing for one turn)
         """
-        print "Going %s..." % direction
         self.send (keys.dirs[direction])
-        self.watch()
+        return self.watch()
 
     def openDoor (self, direction):
         """ Open a door in the specified direction.  See 'go' for list of possible directions. """
         self.send ('o')
-        matched = self.watch('In what direction? ')
-        if matched == 'In what direction? ':
-            self.send (keys.dirs[direction])
-            self.watch()
+        matched = self.watch()
+        if isinstance (matched, DirectionInteraction):
+            matched = matched.answer (direction)
+        return matched
 
     def closeDoor (self, direction):
         """ Close a door in the specified direction.  See 'go' for list of possible directions. """
         self.send ('c')
-        matched = self.watch('In what direction? ')
-        if matched == 'In what direction? ':
-            self.send (keys.dirs[direction])
-            self.watch()
+        matched = self.watch()
+        if isinstance (matched, DirectionInteraction):
+            matched = matched.answer (direction)
+        return matched
 
     def kick (self, direction):
         """ Kick in the specified direction.  See 'go' for a list of possible directions. """
         self.send ('\x04')
-        matched = self.watch('In what direction? ')
-        if matched == 'In what direction? ':
-            self.send (keys.dirs[direction])
-            self.watch()
+        matched = self.watch()
+        if isinstance (matched, DirectionInteraction):
+            matched = matched.answer (direction)
+        return matched
 
     def fight (self, direction):
         """ Fight (even if you don't sense a monster) in the specified direction. """
         self.send ('F')
         self.send (keys.dirs[direction])
-        self.watch()
+        return self.watch()
 
     def quaff (self, potion):
         """ Quaff a potion.  'potion' should have been retrieved from our inventory recently. """
-        print "Quaffing %s..." % potion['description']
+        print "Quaffing %s..." % potion.description
         self.send ('q')
-        matched = self.watch('] ')
-        if matched == '] ':
-            self.send (potion['key'])
-            self.watch()
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction):
+            matched = matched.answer (potion.key)
+        return matched
 
     def eat (self, food):
-        """ Eat something. 'food' should have been retrieved from our inventory recently.
-            An interaction might be returned if the game prompts to stop the meal before finishing.
-        """
-        print "Eating %s..." % food['description']
+        """ Eat something. 'food' should have been retrieved from our inventory recently. """
+        print "Eating %s..." % food.description
         self.send ('e')
-        matched = self.watch('] ')
-        if matched == '] ':
-            self.send (food['key'])
-            ev = self.watch('Stop eating? [yn] (y) ')
-            if ev == 'Stop eating? [yn] (y) ':
-                return YesNoInteraction (self, self.screen.getRow (0).strip())
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction):
+            matched = matched.answer (potion.key)
+        return matched
 
     def sit (self):
         """ Sit down for one turn """
         print "Sitting"
         self.sendline ("#sit")
-        self.watch()
+        return self.watch()
 
     def drop (self, item, amount=None):
         """ Drop an item.  'item' should have been retrieved recently from our inventory.
@@ -247,7 +272,7 @@ class NetHackPlayer(object):
         self.send ('d')
         if not amount is None:
             self.send (str(amount))
-        self.send (item['key'])
+        self.send (item.key)
         self.watch()
 
     def multiDrop (self, items):
@@ -256,9 +281,9 @@ class NetHackPlayer(object):
         self.sendline ('a') # All types
         more_pages = True
         while more_pages:
-            matched = self.watch (['(end) ', '(1 of 2)', '(2 of 2)'])
+            matched = self.watch ([r'\(end\) ', r'\(1 of 2\)', r'\(2 of 2\)'])
             for i in items:
-                self.send (i['key'])
+                self.send (i.key)
             self.send (' ')
             if matched != '(1 of 2)':
                 more_pages = False
@@ -269,17 +294,17 @@ class NetHackPlayer(object):
             If only one item is available to be picked up, then it's automatically picked up.
             Else, an interaction is returned prompting the user to select between available items. """
         self.send (',')
-        matched = self.watch (['(end) ', '(1 of 2)', '(2 of 2)'])
+        matched = self.watch ([r'\(end\) ', r'\(1 of 2\)', r'\(2 of 2\)'])
         if matched != '@':
             return MultipleSelectInteraction (self)
 
     def quit (self):
         """ Abandon this game """
         self.sendline ('#quit')
-        matched = self.watch ('[yn] (n) ')
-        if matched == '[yn] (n) ':
-            return YesNoInteraction (self, self.screen.getRow (0).strip())
-
+        matched = self.watch ()
+        if isinstance (matched, YesNoInteraction):
+            matched = matched.answer ('y')
+        return matched
 
     def inventory (self, categories=None):
         """ Retrieve your inventory.  'categories' can be a list of strings describing the categories
@@ -289,25 +314,25 @@ class NetHackPlayer(object):
             more_pages = True
             self.cachedInventory = []
             while more_pages:
-                matched = self.watch(['(end) ', '(1 of 2)', '(2 of 2)'])
-                        # We need a bit more power in our patterns here!
+                matched = self.watch([r'\(end\) ', r'\(\d of \d\)'])
                 lines = self.screen.getArea (self.screen.cursorX - len(matched), 0, h=self.screen.cursorY)
                 for line in lines:
                     if line.find(' - ') == -1:
                         category = line.strip()
                     else:
                         key, item = line.split(' - ', 1)
-                        self.cachedInventory.append({'key': key.strip(),
-                                                     'description':item.strip(),
-                                                     'category': category})
+                        it = Item (key.strip(), description=item.strip(), category=category)
+                        self.cachedInventory.append(it)
                 self.send (' ')
                 if matched != '(1 of 2)':
                     more_pages = False
             self.watch()
+        if isinstance (categories, basestring):
+            categories = [categories]
         if categories is None:
             return self.cachedInventory
         else:
-            return [item for item in self.cachedInventory if item['category'] in categories]
+            return [item for item in self.cachedInventory if item.category in categories]
 
     def strength (self):
         """Returns my current strength.  For strength above 18 a floating point number is returned,
@@ -403,15 +428,16 @@ class NetHackPlayer(object):
     def experienceLevel (self):
         """ Returns my current experience level as an int.  Compare with 'experience' """
         statLine = self.screen.getRow (23)
-        val = statLine.find ('Xp:') + 3
+        val = statLine.find ('Exp:') + 4
         return int(statLine[val : statLine.find ('/', val + 1)])
 
     def experience (self):
-        """ Returns my current dexterity as an int. Compare with 'experienceLevel' """
+        """ Returns my current experience as an int. Compare with 'experienceLevel' """
         statLine = self.screen.getRow (23)
-        val = statLine.find ('Xp:') + 3
-        val = statLine.find ('/', val) + 1
-        return int(statLine[val : statLine.find (' ', val + 1)])
+        val = statLine.find ('Xp:')
+        if val > -1:
+            val = statLine.find ('/', val + 3) + 1
+            return int(statLine[val : statLine.find (' ', val + 1)])
 
     def turn (self):
         """ Returns the contents of the turn counter as an int """
