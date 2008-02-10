@@ -1,3 +1,4 @@
+import re
 BOLD = 1
 
 FGBLACK = 0 << 5
@@ -43,7 +44,7 @@ class Screen(object):
                                  "[$m": self.setCharacterAtts,
                                  "[m": self.resetCharAtts,
                                  "7": self.saveCursor, # Save cursor position and attributes
-                                 "8": self.loadCursor # Restore cursor position and attributes
+                                 "8": self.restoreCursor # Restore cursor position and attributes
                                 }
 
     def dump(self):
@@ -124,6 +125,7 @@ class Screen(object):
         self.cursorY = 0
 
     def clearScreen (self, cmd):
+        ## Shouldn't this send the cursor to (0,0) also??
         self.screen = [[' '] * WIDTH for x in range(HEIGHT)]
         self.attrs = [[0] * WIDTH for x in range(HEIGHT)]
 
@@ -221,30 +223,16 @@ class Screen(object):
 
     def matches (self, pattern):
         """ Returns True if the string appearing right before the cursor matches 'pattern'.
-            'pattern' can contain the following special characters:
-                '#' matches any whole number
-                '*' matches any character
-            Yes, this makes some patterns undescribable (those containing explicit * or # characters that
-            shouldn't match any other character).  I'll worry about them when I come accross them.
+            pattern can be any Python regular expression.
         """
-        # backwards search, backwards logic!
-        pos = self.cursorX - 1
-        for i in range(len(pattern) - 1, -1, -1):
-            if pos < 0:
-                return None
-            if pattern[i] != '*':
-                if pattern[i] != '#':
-                    if self.screen[self.cursorY][pos] != pattern[i]:
-                        return None
-                else:
-                    if not self.screen[self.cursorY][pos].isdigit():
-                        return None
-                    else:
-                        while not (pos <= 0 or not self.screen[self.cursorY][pos - 1].isdigit()):
-                            pos -= 1
-            pos -= 1
-        self._last_match = self.getRow (self.cursorY, start=pos+1, finish=self.cursorX)
-        return True
+        self._last_match = None
+        toMatch = self.getRow (self.cursorY, finish=self.cursorX)
+        if not pattern.endswith('$'):
+            pattern = pattern + '$'
+        regex = re.search (pattern, toMatch)
+        if not regex is None:
+          self._last_match = regex.group(0)
+        return not self._last_match is None
 
     def lastMatch (self):
         """ Returns last match found by 'matches'.  Returns the exact string that matched,
