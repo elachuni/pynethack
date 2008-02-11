@@ -24,7 +24,7 @@ from scraper import Screen
 import nethackkeys as keys
 import time
 import sys
-from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, MultipleSelectInteraction, DirectionInteraction, Information
+from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, DirectionInteraction, Information
 from items import Item
 
 class NetHackPlayer(object):
@@ -82,26 +82,24 @@ class NetHackPlayer(object):
 
     def new_game(self):
         """ Start a new game and select role, race, gender and alignment """
-        match = self.watch ([r'\[ynq\] ', r'in 1'])
-        if match == '[ynq] ':
-            self.send ('n')
-        elif match == 'in 1':
+        checkPendingInteraction(self)
+        match = self.watch (r'in 1')
+        if match == 'in 1':
             print "Waiting 10 seconds for old save game to be restored...\n"
             # Wait 10 seconds for old game to be restored
             time.sleep(11)
-        self.watch (r'\(end\) ')
-        if self.screen.getRow(0).find('Role') >= 0:
-            self.send(keys.roles[self.initialRole])
-            self.watch (r'\(end\) ')
-        if self.screen.getRow(0).find('Race') >= 0:
-            self.send(keys.races[self.initialRace])
-            self.watch (r'\(end\) ')
-        if self.screen.getRow(0).find('Gender') >= 0:
-            self.send(keys.genders[self.initialGender])
-            self.watch (r'\(end\) ')
-        if self.screen.getRow(0).find('Alignment') >= 0:
-            self.send(keys.alignments[self.initialAlignment])
-            self.watch()
+        elif isinstance (match, YesNoQuitInteraction):
+            match = match.answer ('n')
+        elif isinstance (match, YesNoInteraction) and match.question == 'There is already a game in progress under your name.  Destroy old game?':
+            return match
+        if isinstance (match, SelectDialogInteraction) and 'Role' in match.question:
+            match = match.answer (Item(keys.roles[self.initialRole]))
+        if isinstance (match, SelectDialogInteraction) and 'Race' in match.question:
+            match = match.answer (Item(keys.races[self.initialRace]))
+        if isinstance (match, SelectDialogInteraction) and 'Gender' in match.question:
+            match = match.answer (Item(keys.genders[self.initialGender]))
+        if isinstance (match, SelectDialogInteraction) and 'Alignment' in match.question:
+            match = match.answer (Item(keys.alignments[self.initialAlignment]))
 
     def watch (self, expecting=None):
         """ Update the screen and see what happens. """
@@ -148,7 +146,7 @@ class NetHackPlayer(object):
                         found = True
                     elif self.screen.matches (r'\(end\) |\(\d of\d\) '):
                         print "Matches MultiSelect"
-                        matched = MultipleSelectInteraction (self)
+                        matched = SelectDialogInteraction (self)
                         found = True
                     elif self.screen.matches (r'In what direction\? '):
                         print "Matches Direction"
@@ -169,7 +167,6 @@ class NetHackPlayer(object):
                      #self.screen.cursorY, 0,
                      #self.screen.cursorX)
                     #print "Timed out with an unexpected output :-("
-                    #self.screen.dump()
                     #print "Cursor at %d,%d" % (self.screen.cursorY, self.screen.cursorX)
                     #print "Output so far:", [self.child.before]
                     #print "Expecting:", patterns
@@ -241,8 +238,10 @@ class NetHackPlayer(object):
         self.send (keys.dirs[direction])
         return self.watch()
 
-    def quaff (self, potion):
-        """ Quaff a potion.  'potion' should have been retrieved from our inventory recently. """
+    def quaff (self, potion=Item('*')):
+        """ Quaff a potion.
+            'potion' should have been retrieved from our inventory recently.
+            If you leave 'potion' as default, a SelectDialogInteraction will return"""
         print "Quaffing %s..." % potion.description
         self.send ('q')
         matched = self.watch()
@@ -250,8 +249,10 @@ class NetHackPlayer(object):
             matched = matched.answer (potion.key)
         return matched
 
-    def eat (self, food):
-        """ Eat something. 'food' should have been retrieved from our inventory recently. """
+    def eat (self, food=Item('*')):
+        """ Eat something.
+            'food' should have been retrieved from our inventory recently.
+            If you leave 'potion' as default, a SelectDialogInteraction will return """
         print "Eating %s..." % food.description
         self.send ('e')
         matched = self.watch()
@@ -265,38 +266,130 @@ class NetHackPlayer(object):
         self.sendline ("#sit")
         return self.watch()
 
-    def drop (self, item, amount=None):
+    def search (self):
+        """ Search around for hidden stuff"""
+        self.send ('s')
+        return self.watch()
+
+    def fire (self, direction):
+        """ Fire your readied ammunition in a certain direction.
+            If no ammunition is readied, a SelectDialog will be returned."""
+        self.send ('f')
+        matched = self.watch()
+        if isinstance (matched, DirectionInteraction):
+            matched = matched.answer (direction)
+        return matched
+
+    def drop (self, item=Item('*'), amount=None):
         """ Drop an item.  'item' should have been retrieved recently from our inventory.
             If 'amount' is an integer, drop that amount of items
             (to drop one gold piece, for example) """
+        print "Dropping %s..." % item.description
         self.send ('d')
         if not amount is None:
             self.send (str(amount))
-        self.send (item.key)
-        self.watch()
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction):
+            matched = matched.answer (item.key)
+        return matched
 
     def multiDrop (self, items):
         """ Drop multiple items. 'items' is a list of stuff from our inventory. """
         self.send ('D')
-        self.sendline ('a') # All types
-        more_pages = True
-        while more_pages:
-            matched = self.watch ([r'\(end\) ', r'\(1 of 2\)', r'\(2 of 2\)'])
-            for i in items:
-                self.send (i.key)
-            self.send (' ')
-            if matched != '(1 of 2)':
-                more_pages = False
-        self.watch()
+        matched = self.watch()
+        if isinstance (matched, SelectDialogInteraction) and 'what type' in matched.question:
+            matched = matched.answer ([Item('a')]) # All types
+        if isinstance (matched, SelectDialogInteraction) and 'What would you like to drop' in matched.question:
+            matched = matched.answer (items)
+        return matched
 
     def pickUp (self):
-        """ Pick one or more items up off the ground.
-            If only one item is available to be picked up, then it's automatically picked up.
-            Else, an interaction is returned prompting the user to select between available items. """
+        """ Pick one or more items up off the ground."""
         self.send (',')
-        matched = self.watch ([r'\(end\) ', r'\(1 of 2\)', r'\(2 of 2\)'])
-        if matched != '@':
-            return MultipleSelectInteraction (self)
+        return self.watch ()
+
+    def takeOff (self, item=Item('*')):
+        """ Take off a garment.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('T')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'take off' in matched.question:
+            matched = matched.answer (item.key)
+        return matched
+
+    def quiver (self, item=Item('*')):
+        """ Ready an item in your quiver to be able to fire it using the 'fire' method.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('Q')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'ready' in matched.question:
+            matched = matched.answer (item.key)
+        return matched
+
+    def wear (self, item=Item('*')):
+        """ Put on a piece of clothing.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('W')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'wear' in matched.question:
+            matched = matched.answer (item.key)
+        return matched
+
+    def putOn (self, item=Item('*')):
+        """ Put on an accessory.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('W')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'put on' in matched.question:
+            matched = matched.answer (item.key)
+        return matched
+
+    def wield (self, item=Item('*')):
+        """ Wield a weapon.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('w')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'wield' in matched.question:
+            matched = matched.answer (item.key)
+        return matched
+
+    def read (self, item=Item('*')):
+        """ Read a book or scroll.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('r')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'read' in matched.question:
+            matched = matched.answer (item.key)
+        return matched
+
+    def throw(self, direction, item=Item('*')):
+        """ Throw an item.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('t')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'throw' in matched.question:
+            matched = matched.answer (item.key)
+        if isinstance (matched, DirectionInteraction):
+            matched = matched.answer (direction)
+        return matched
+
+    def apply(self, item=Item('*')):
+        """ Use or apply an item.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('a')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'use or apply' in matched.question:
+            matched = matched.answer (item.key)
+        return matched
+
+    def remove (self, item=Item('*')):
+        """ Remove an accessory.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('R')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'remove' in matched.question:
+            matched = matched.answer (item.key)
+        return matched
 
     def quit (self):
         """ Abandon this game """
