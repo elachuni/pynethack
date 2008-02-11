@@ -53,7 +53,7 @@ class Information (object):
 class DirectionInteraction (Interaction):
     """ The player should choose a direction here """
     def answer (self, ans):
-        super (DirectionInteraction, self).answer (keys.dirs[ans])
+        return super (DirectionInteraction, self).answer (keys.dirs[ans])
     def options (self):
         return keys.dirs.keys()
 
@@ -70,15 +70,17 @@ class YesNoInteraction (Interaction):
     def answer (self, ans):
         ans = self.__opts.get(ans)
         if ans is None:
-            self.answerDefault()
+            match = self.answerDefault()
         else:
-            super(YesNoInteraction, self).answer(ans)
+            match = super(YesNoInteraction, self).answer(ans)
+        return match
     def options (self):
         """ Life is simple """
         return ["y", "n"]
 
 class YesNoQuitInteraction (Interaction):
-    """ I describe a yes/no/quit question.  These questions only arise once the game is over. """
+    """ I describe a yes/no/quit question.  These questions usually arise once
+        outside the game, once it's over or before it has begone. """
     __opts = {'yes': 'y', 'y': 'y', 'no': 'n', 'n': 'n', 'quit': 'q', 'q': 'q'}
     defaultAnswer = 'q'
     def __init__ (self, player, question):
@@ -91,9 +93,10 @@ class YesNoQuitInteraction (Interaction):
     def answer (self, ans):
         ans = self.__opts.get(ans)
         if ans is None:
-            self.answerDefault()
+            match = self.answerDefault()
         else:
-            super(YesNoQuitInteraction, self).answer(ans)
+            match = super(YesNoQuitInteraction, self).answer(ans)
+        return match
     def options (self):
         """ Life is simple """
         return ["y", "n", "q"]
@@ -105,12 +108,15 @@ class SelectInteraction (Interaction):
         match = re.match (r'(?P<question>.*) \[(?P<opts>.*) or \?\*\] ', question)
         if not match is None:
             self.question = match.group ('question')
-            self.opts = match.group ('opts')
+            self.__opts = match.group ('opts')
     def options (self):
-        return self.opts[:]
+        return self.__opts[:]
 
-class MultipleSelectInteraction (Interaction):
-    """ I describe a list of options from which you can select many alternatives """
+class SelectDialogInteraction (Interaction):
+    """ I describe a list of options from which you can select one or many alternatives.
+        MultiSelect and SingleSelect dialogs aren't distinguishable at sight, so you need
+        to tell me if I should treat this as a MultiSelect or a SingleSelect when you go to
+        answer the question."""
     def __init__ (self, player, question=None):
         """ If question is None, I suppose it's on the first line of the screen. """
         Interaction.__init__(self, player, question)
@@ -122,6 +128,7 @@ class MultipleSelectInteraction (Interaction):
         lines = self.player.screen.getArea (self.player.screen.cursorX - len(matched), 0, h=self.player.screen.cursorY)
         opts = []
         more_pages = True
+        totalPages = 0
         while more_pages:
             for line in lines:
                 if line.find(' - ') == -1:
@@ -130,20 +137,47 @@ class MultipleSelectInteraction (Interaction):
                     key, item = line.split(' - ', 1)
                     it = Item(key.strip(), description=item.strip(), category=category)
                     opts.append(it)
-            if matched == '(1 of 2)':
-                self.player.send ('>')
-                matched = self.watch(['\(end\) ', '\(\d of \d\) '])
+            print "interactions.py: matched='%s'" % matched
+            if matched != '(end) ':
+                currentPage, totalPages = self.parseMOfN (matched)
+                print "Page", currentPage, "of", totalPages
+                if currentPage < totalPages:
+                    self.player.send ('>')
+                    matched = self.player.watch(['\(end\) ', '\(\d of \d\) '])
+                    if matched is None:
+                        raise ValueError, "No multiple selection dialog visible"
+                    lines = self.player.screen.getArea (self.player.screen.cursorX - len(matched), 0, h=self.player.screen.cursorY)
+                else:
+                    more_pages = False
             else:
                 more_pages = False
-        self.opts = opts
+        # Return to the first page
+        for i in range(totalPages - 1):
+            self.send ('<')
+            self.player.watch (['\(end\) ', '\(\d of \d\) '])
+        self.__opts = opts
 
     def options (self):
-        return self.opts
+        return self.__opts[:]
 
     def answer (self, items):
+        """ 'items': can be a single Item, or a list of Items.
+            if it's a single Item then the dialog is treated as a SingleSelect dialog.
+            if you pass in a list of items, I treat the list as a MultiSelect dialog."""
         checkPendingInteraction (self.player, self)
         self.player.pendingInteraction = None
-        for i in items:
-            self.player.send (i['key'])
-        self.player.send (' ')
+        if isinstance (items, Item):
+            self.player.send (items.key)
+        else:
+            match = self.player.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
+            if match == '(end) ':
+                totalPages = 1
+            else:
+                currentPage, totalPages = self.parseMOfN(match)
+                if currentPage != 1:
+                    raise ValueError, "I shouldn't be asked to answer an interaction when not on the first page of a dialog."
+            for page in range(totalPages):
+                for i in items:
+                    self.player.send (i.key)
+                self.player.send (' ')
         return self.player.watch()
