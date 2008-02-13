@@ -102,9 +102,8 @@ class Screen(object):
             raise IndexError
         if ch == '\r':
             self.cursorX = 0
-            self.cursorY += 1
         elif ch == '\n':
-            pass # Use '\r' for newlines
+            self.cursorY += 1
         elif ch == '\x08': # Backspace
             self.cursorX -= 1
         elif ch == '\x0f': # Shift in - Invoke G0 charset

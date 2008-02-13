@@ -78,6 +78,28 @@ class YesNoInteraction (Interaction):
         """ Life is simple """
         return ["y", "n"]
 
+class CursorPointInteraction (Interaction):
+    """ I'm an interaction that requests the user to select a position in the maze using the cursor. """
+    def answer (self, x, y):
+        checkPendingInteraction (self.player, self)
+        self.player.pendingInteraction = None
+        currentX = self.player.x()
+        currentY = self.player.y()
+        while x > currentX:
+            self.player.send ('l')
+            currentX += 1
+        while x < currentX:
+            self.player.send ('h')
+            currentX -= 1
+        while y < currentY:
+            self.player.send ('k')
+            currentY -= 1
+        while y > currentY:
+            self.player.send ('j')
+            currentY += 1
+        self.player.send ('.')
+        return self.player.watch()
+
 class YesNoQuitInteraction (Interaction):
     """ I describe a yes/no/quit question.  These questions usually arise once
         outside the game, once it's over or before it has begone. """
