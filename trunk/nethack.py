@@ -24,7 +24,7 @@ from scraper import Screen
 import nethackkeys as keys
 import time
 import sys
-from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, DirectionInteraction, Information
+from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, DirectionInteraction, CursorPointInteraction, Information
 from items import Item
 
 class NetHackPlayer(object):
@@ -40,7 +40,6 @@ class NetHackPlayer(object):
             userstr = (not user is None) and ('-u ' + user) or ''
             self.child = pexpect.spawn ("nethack %s" % userstr)
         else:
-            self.host = host
             self.child = pexpect.spawn ("telnet %s" % host)
         self.screen = Screen()
         self.lastSeenTurn = -1 # Used by 'watch', no need to change this
@@ -118,6 +117,9 @@ class NetHackPlayer(object):
                 # --More--
                 if self.screen.cursorY == 0:
                     msg = [self.screen.getRow(0, start=0, finish=self.screen.cursorX - 9).strip()]
+                elif self.screen.cursorY == 1:
+                    msg = [self.screen.getRow(0) +
+                           self.screen.getRow(1, start=0, finish=self.screen.cursorX - 9).strip()]
                 else:
                     msg = self.screen.getArea(self.screen.cursorX - 9, 0, 80, self.screen.cursorY)
                 info += msg
@@ -261,9 +263,13 @@ class NetHackPlayer(object):
         return matched
 
     def sit (self):
-        """ Sit down for one turn """
-        print "Sitting"
+        """ Sit down """
         self.sendline ("#sit")
+        return self.watch()
+
+    def rest (self):
+        """ Wait a moment """
+        self.send (".")
         return self.watch()
 
     def search (self):
@@ -389,6 +395,15 @@ class NetHackPlayer(object):
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'remove' in matched.question:
             matched = matched.answer (item.key)
+        return matched
+
+    def look (self, x, y):
+        """ Look at what is at a certain coordinate in the dungeon """
+        self.send (";")
+        matched = self.watch ()
+        if isinstance (matched, Information) and matched.message == ['Pick an object.']:
+            matched = CursorPointInteraction (self, matched.message)
+            matched = matched.answer (x, y)
         return matched
 
     def quit (self):
@@ -592,3 +607,13 @@ class NetHackPlayer(object):
             if stat in statLine:
                 return stat
         return "Unemcumbered"
+
+    def x(self):
+        """ Returns our current x-position (column) within the current dungeon level """
+        checkPendingInteraction (self)
+        return self.screen.cursorX
+
+    def y(self):
+        """ Returns our current y-position (row) within the current dungeon level """
+        checkPendingInteraction (self)
+        return self.screen.cursorY - 1 # There's one row of heading above the maze
