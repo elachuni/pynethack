@@ -24,7 +24,7 @@ from scraper import Screen
 import nethackkeys as keys
 import time
 import sys
-from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, DirectionInteraction, CursorPointInteraction, Information
+from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, DirectionInteraction, CursorPointInteraction, FreeEntryInteraction, Information
 from items import Item
 
 class NetHackPlayer(object):
@@ -132,7 +132,6 @@ class NetHackPlayer(object):
                     matched = self.screen.multiMatch(expecting)
                     if not matched is None:
                         found = True
-                #  Next: Test for a YesNo interaction:
                 if not found:
                     if self.screen.matches (r'.* \[yn\]( \(.\))? ?'):
                         matched = YesNoInteraction (self, self.screen.lastMatch())
@@ -149,7 +148,10 @@ class NetHackPlayer(object):
                     elif self.screen.matches (r'In what direction.*\?.*'):
                         matched = DirectionInteraction (self, self.screen.lastMatch())
                         found = True
-                    #elif... free entry option
+                    elif self.screen.cursorY == 0:
+                        # This can't be waiting for the player to move, we guess it's a free entry question
+                        matched = FreeEntryInteraction (self, self.screen.getRow(0).strip())
+                        found = True
                     #elif... select position with cursor interaction
                     #  Finally, assume the next turn is ready, and hand over control
                     else:
@@ -378,6 +380,42 @@ class NetHackPlayer(object):
             matched = matched.answer (item.key)
         if isinstance (matched, DirectionInteraction) and not direction is None:
             matched = matched.answer (direction)
+        return matched
+
+    def name (self, item=Item('*'), name=None):
+        """ Name an individual object """
+        self.sendline ('#name')
+        matched = self.watch()
+        if isinstance (matched, YesNoQuitInteraction) and 'Name an individual object' in matched.question:
+            matched = matched.answer ('y')
+        if isinstance (matched, SelectInteraction) and 'name' in matched.question:
+            matched = matched.answer (item.key)
+        if isinstance (matched, FreeEntryInteraction) and 'What do you want to name' in matched.question:
+            if name is not None:
+                matched = matched.answer (name)
+        return matched
+
+    def call (self, x, y, name=None):
+        """ Name an individual monster (ex. baptize your dog) """
+        self.send ('C')
+        matched = self.watch ()
+        if isinstance (matched, Information) and matched.message == ['(For instructions type a ?)']:
+            matched = CursorPointInteraction (self, matched.message)
+            matched = matched.answer (x, y)
+        if isinstance (matched, FreeEntryInteraction) and 'What do you want to call' in matched.question:
+            if name is not None:
+                matched = matched.answer (name)
+        return matched
+
+    def engrave (self, using, msg=None):
+        """ Write a message in the dust on the floor (if using=Item('-') use fingers) """
+        self.send ('E')
+        matched = self.watch ()
+        if isinstance (matched, SelectInteraction) and 'write with' in matched.question:
+            matched = matched.answer (using.key)
+        if isinstance (matched, FreeEntryInteraction) and 'What do you want to write' in matched.question:
+            if msg is not None:
+                matched = matched.answer (msg)
         return matched
 
     def apply(self, item=Item('*')):

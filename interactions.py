@@ -110,8 +110,7 @@ class CursorPointInteraction (Interaction):
         return self.player.watch()
 
 class YesNoQuitInteraction (Interaction):
-    """ I describe a yes/no/quit question.  These questions usually arise once
-        outside the game, once it's over or before it has begone. """
+    """ I describe a yes/no/quit question. """
     __opts = {'yes': 'y', 'y': 'y', 'no': 'n', 'n': 'n', 'quit': 'q', 'q': 'q'}
     defaultAnswer = 'q'
     def __init__ (self, player, question):
@@ -131,6 +130,14 @@ class YesNoQuitInteraction (Interaction):
     def options (self):
         """ Life is simple """
         return ["y", "n", "q"]
+
+class FreeEntryInteraction (Interaction):
+    """ I describe a prompt to enter some free text. """
+    def answer (self, ans):
+        checkPendingInteraction (self.player, self)
+        self.player.pendingInteraction = None
+        self.player.sendline (ans)
+        return self.player.watch()
 
 class SelectInteraction (Interaction):
     """ I describe a question where the user should select an item, usually from the inventory """
