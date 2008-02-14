@@ -79,7 +79,7 @@ class NetHackPlayer(object):
         if opts.has_key ("play nethack!"):
             self.send (opts['play nethack!']) # attempt to launch a new game
 
-    def new_game(self):
+    def play(self):
         """ Start a new game and select role, race, gender and alignment """
         checkPendingInteraction(self)
         match = self.watch (r'in 1')
@@ -146,7 +146,7 @@ class NetHackPlayer(object):
                     elif self.screen.matches (r'\(end\) |\(\d of\d\) '):
                         matched = SelectDialogInteraction (self)
                         found = True
-                    elif self.screen.matches (r'In what direction\? '):
+                    elif self.screen.matches (r'In what direction.*\?.*'):
                         matched = DirectionInteraction (self, self.screen.lastMatch())
                         found = True
                     #elif... free entry option
@@ -170,7 +170,9 @@ class NetHackPlayer(object):
                     #raise ValueError, "Unexpected Output"
             self.screen.dump()
         if len(info) > 0:
-            self.info = matched = Information (self, info)
+            self.info = Information (self, info)
+            if matched is None:
+                matched = self.info
         if self.turn() != self.lastSeenTurn:
             self.cachedInventory = None
             self.lastSeenTurn = self.turn()
@@ -264,6 +266,11 @@ class NetHackPlayer(object):
     def rest (self):
         """ Wait a moment """
         self.send (".")
+        return self.watch()
+
+    def exchange (self):
+        """ Exchange primary and secondary weapons """
+        self.send ("x")
         return self.watch()
 
     def search (self):
@@ -362,14 +369,14 @@ class NetHackPlayer(object):
             matched = matched.answer (item.key)
         return matched
 
-    def throw(self, direction, item=Item('*')):
+    def throw(self, item=Item('*'), direction=None):
         """ Throw an item.
             If no 'item' is passed in, a SelectDialogInteraction is returned. """
         self.send ('t')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'throw' in matched.question:
             matched = matched.answer (item.key)
-        if isinstance (matched, DirectionInteraction):
+        if isinstance (matched, DirectionInteraction) and not direction is None:
             matched = matched.answer (direction)
         return matched
 
