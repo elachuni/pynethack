@@ -40,22 +40,31 @@ class Interaction (object):
     def answerDefault (self):
         checkPendingInteraction (self.player, self)
         self.player.pendingInteraction = None
-        self.player.send ('\x0b')
+        self.player.send ('\x1b')
         return self.player.watch()
 
 class Information (object):
     """ I describe a bit of information the game reports.
         Unlike an interaction, I don't require an answer and can be discarded imediately"""
     def __init__ (self, player, message):
-        checkPendingInteraction (player)
+        #checkPendingInteraction (player)
         self.message = message
 
 class DirectionInteraction (Interaction):
     """ The player should choose a direction here """
+    def __init__ (self, player, question):
+        super (DirectionInteraction, self).__init__ (player, question)
+        match = re.match (r'(?P<question>.*) \[(?P<opts>.*)\] ', question)
+        if match is None:
+            self.__opts = keys.dirs.keys()
+        else:
+            self.question = match.group ('question')
+            self.__opts = [opt[0] for opt in keys.dirs.items() if opt[1] in match.group ('opts')]
+
     def answer (self, ans):
         return super (DirectionInteraction, self).answer (keys.dirs[ans])
     def options (self):
-        return keys.dirs.keys()
+        return self.__opts[:]
 
 class YesNoInteraction (Interaction):
     """ I describe a yes/no question """
@@ -159,7 +168,6 @@ class SelectDialogInteraction (Interaction):
                     key, item = line.split(' - ', 1)
                     it = Item(key.strip(), description=item.strip(), category=category)
                     opts.append(it)
-            print "interactions.py: matched='%s'" % matched
             if matched != '(end) ':
                 currentPage, totalPages = self.parseMOfN (matched)
                 print "Page", currentPage, "of", totalPages
