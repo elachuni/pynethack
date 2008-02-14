@@ -99,6 +99,7 @@ class NetHackPlayer(object):
             match = match.answer (Item(keys.genders[self.initialGender]))
         if isinstance (match, SelectDialogInteraction) and 'Alignment' in match.question:
             match = match.answer (Item(keys.alignments[self.initialAlignment]))
+        return match
 
     def watch (self, expecting=None):
         """ Update the screen and see what happens. """
@@ -133,32 +134,25 @@ class NetHackPlayer(object):
                         found = True
                 #  Next: Test for a YesNo interaction:
                 if not found:
-                    print "Not found yet"
                     if self.screen.matches (r'.* \[yn\]( \(.\))? ?'):
-                        print "Matches YesNo"
                         matched = YesNoInteraction (self, self.screen.lastMatch())
                         found = True
                     elif self.screen.matches (r'.* \[ynq\]( \(.\))? ?'):
-                        print "Matches YesNoQuit"
                         matched = YesNoQuitInteraction (self, self.screen.lastMatch())
                         found = True
                     elif self.screen.matches (r'.* \[.* or \?\*\] '):
-                        print "MatchesSelect"
                         matched = SelectInteraction (self, self.screen.lastMatch())
                         found = True
                     elif self.screen.matches (r'\(end\) |\(\d of\d\) '):
-                        print "Matches MultiSelect"
                         matched = SelectDialogInteraction (self)
                         found = True
                     elif self.screen.matches (r'In what direction\? '):
-                        print "Matches Direction"
                         matched = DirectionInteraction (self, self.screen.lastMatch())
                         found = True
                     #elif... free entry option
-                    #elif... select position interaction
+                    #elif... select position with cursor interaction
                     #  Finally, assume the next turn is ready, and hand over control
                     else:
-                        print "Matches nothing, must be an info"
                         msg = self.screen.getRow(0).strip()
                         if len(msg) > 0:
                             info += [msg]
@@ -394,6 +388,15 @@ class NetHackPlayer(object):
         self.send ('R')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'remove' in matched.question:
+            matched = matched.answer (item.key)
+        return matched
+
+    def zap (self, item=Item('*')):
+        """ Zap a wand.
+            If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('z')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction) and 'zap' in matched.question:
             matched = matched.answer (item.key)
         return matched
 

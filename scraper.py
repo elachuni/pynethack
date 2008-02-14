@@ -1,22 +1,34 @@
 import re
-BOLD = 1
-
-FGBLACK = 0 << 5
-FGRED = 1 << 5
-FGGREEN = 2 << 5
-FGYELLOW = 3 << 5
-FGBLUE = 4 << 5
-FGMAGENTA = 5 << 5
-FGCYAN = 6 << 5
-FGWHITE = 7 << 5
 
 WIDTH=80
 HEIGHT=24
 
+class Cell(object):
+    def __init__(self, char=' '):
+        self.char = char
+        self.bold = False
+        self.inverse = False
+        self.foreground = 9
+    def __str__ (self):
+        result = ''
+        someEscape = False
+        if self.bold:
+            result += '\x1b[1m'
+            someEscape = True
+        if self.inverse:
+            result += '\x1b[7m'
+            someEscape = True
+        if self.foreground < 9:
+            result += '\x1b[3%dm' % self.foreground
+            someEscape = True
+        result += self.char
+        if someEscape:
+            result += '\x1b[m'
+        return result
+
 class Screen(object):
     def __init__(self):
-        self.screen = [[' '] * WIDTH for x in range(HEIGHT)]
-        self.attrs = [[0] * WIDTH for x in range(HEIGHT)]
+        self.screen = [[Cell() for cell in range(WIDTH)] for x in range(HEIGHT + 1)]
         self.cursorX = 0
         self.cursorY = 0
         self.savedCursorX = 0
@@ -24,7 +36,9 @@ class Screen(object):
         self.charSet = "default"
         self.G0 = "default"
         self.G1 = "default"
-        self.charAtts = 0
+        self.charAttBold = False
+        self.charAttInverse = False
+        self.charAttForeground = 9
         self.escape_sequences = {"( ": self.setCharset, # Set G0 character set
                                  ") ": self.setCharset, # Set G1 character set
                                  "[$d":self.gotoY, # Line position absolute
@@ -47,9 +61,14 @@ class Screen(object):
                                  "8": self.restoreCursor # Restore cursor position and attributes
                                 }
 
+    def setAtts (self, cell):
+        cell.bold = self.charAttBold
+        cell.inverse = self.charAttInverse
+        cell.foreground = self.charAttForeground
+
     def dump(self):
         for row in self.screen:
-            print ''.join(row)
+            print ''.join([str(cell) for cell in row])
 
     def printstr (self, cmd):
         index = 0
@@ -109,11 +128,12 @@ class Screen(object):
         elif ch == '\x0f': # Shift in - Invoke G0 charset
             self.charSet = self.G0
         elif ch >= ' ' and ch <= '~':
-            self.screen[self.cursorY][self.cursorX] = ch
-            self.attrs[self.cursorY][self.cursorX] = self.charAtts
+            self.screen[self.cursorY][self.cursorX].char = ch
+            self.setAtts (self.screen[self.cursorY][self.cursorX])
             self.cursorX += 1
             if self.cursorX >= 80:
-                self.cursorY += 1
+                if self.cursorY < HEIGHT - 1:
+                    self.cursorY += 1
                 self.cursorX = 0
         else:
             print 'not printable character', [ch]
@@ -125,8 +145,7 @@ class Screen(object):
 
     def clearScreen (self, cmd):
         ## Shouldn't this send the cursor to (0,0) also??
-        self.screen = [[' '] * WIDTH for x in range(HEIGHT)]
-        self.attrs = [[0] * WIDTH for x in range(HEIGHT)]
+        self.screen = [[Cell() for cell in range(WIDTH)] for x in range(HEIGHT + 1)]
 
     def leftN (self, cmd):
         val = self.parseInt (cmd, 1)
@@ -176,24 +195,31 @@ class Screen(object):
 
     def eraseToEndOfLine (self, cmd):
         for i in range(self.cursorX, WIDTH):
-            self.screen[self.cursorY][i] = ' '
-            self.attrs[self.cursorY][i] = 0
+            self.screen[self.cursorY][i] = Cell()
 
     def insertLines (self, cmd):
         val = self.parseInt (cmd, 1)
         print "InsertLines", val
-        self.screen = self.screen[:self.cursorY] + [[' '] * WIDTH for x in range(val)] + self.screen [self.cursorY:HEIGHT-val]
+        self.screen = self.screen[:self.cursorY] + [[Cell() for cell in range(WIDTH)] for x in range(val)] + self.screen [self.cursorY:HEIGHT-val]
 
     def setCharacterAtts (self, cmd):
         val = self.parseInt (cmd, 1)
-        if val == 1:
-            self.charAtts |= BOLD
-        elif val >= 30 and val <= 37:
-            self.charAtts &= ~(7<<5)
-            self.charAtts |= (val - 30) << 5
+        if val == 0:
+            self.resetCharAtts (cmd)
+        elif val == 1:
+            self.charAttBold = True
+        elif val == 7:
+            self.charAttInverse = True
+        elif val >= 30 and val < 40:
+            self.charAttForeground = val - 30
+        else:
+            print "In setCharacterAtts: Unrecognised attribute:", val
+
 
     def resetCharAtts (self, cmd):
-        self.charAtts = 0
+        self.charAttBold = False
+        self.charAttInverse = False
+        self.charAttForeground = 9
 
     def ignore (self, cmd):
         pass
@@ -207,10 +233,10 @@ class Screen(object):
         return val
 
     def getArea (self, x=0, y=0, w=WIDTH, h=HEIGHT):
-        return [''.join (row[x:x+w]) for row in self.screen[y:y+h]]
+        return [''.join ([cell.char for cell in row[x:x+w]]) for row in self.screen[y:y+h]]
 
     def getRow (self, row, start=0, finish=WIDTH):
-        result = ''.join (self.screen[row][start:finish])
+        result = ''.join ([cell.char for cell in self.screen[row][start:finish]])
         return result
 
     def getCharAtRelativePos (self, offsetX=0, offsetY=0):
@@ -218,7 +244,7 @@ class Screen(object):
         posY = self.cursorY + offsetY
         if posX < 0 or posX >= WIDTH or posY < 0 or posY >= HEIGHT:
             return None
-        return self.screen[posY][posX]
+        return self.screen[posY][posX].char
 
     def matches (self, pattern):
         """ Returns True if the string appearing right before the cursor matches 'pattern'.
