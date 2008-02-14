@@ -1,5 +1,5 @@
 import nethackkeys as keys
-from items import Item
+from items import Item, Spell
 import re
 
 class PendingInteraction (Exception):
@@ -167,13 +167,20 @@ class SelectDialogInteraction (Interaction):
         opts = []
         more_pages = True
         totalPages = 0
+        spellList = False
         while more_pages:
             for line in lines:
                 if line.find(' - ') == -1:
                     category = line.strip()
+                    if min([x in category for x in ['Name', 'Level', 'Category', 'Fail']]):
+                        # Oi, this isn't an item list, it's a spell list!
+                        spellList = True
                 else:
                     key, item = line.split(' - ', 1)
-                    it = Item(key.strip(), description=item.strip(), category=category)
+                    if spellList:
+                        it = Spell(key.strip(), description=item.strip(), headings=category)
+                    else:
+                        it = Item(key.strip(), description=item.strip(), category=category)
                     opts.append(it)
             if matched != '(end) ':
                 currentPage, totalPages = self.parseMOfN (matched)
@@ -203,9 +210,7 @@ class SelectDialogInteraction (Interaction):
             if you pass in a list of items, I treat the list as a MultiSelect dialog."""
         checkPendingInteraction (self.player, self)
         self.player.pendingInteraction = None
-        if isinstance (items, Item):
-            self.player.send (items.key)
-        else:
+        if isinstance (items, list):
             match = self.player.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
             if match == '(end) ':
                 totalPages = 1
@@ -217,4 +222,6 @@ class SelectDialogInteraction (Interaction):
                 for i in items:
                     self.player.send (i.key)
                 self.player.send (' ')
+        else:
+            self.player.send (items.key)
         return self.player.watch()

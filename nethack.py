@@ -16,8 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Run locally or against DGameLaunch:
-#    ftp://ftp.alt.org/pub/dgamelaunch/
+# Run against a local nethack game
+# or against a DGameLaunch server (ftp://ftp.alt.org/pub/dgamelaunch/)
 
 import pexpect
 from scraper import Screen
@@ -25,7 +25,7 @@ import nethackkeys as keys
 import time
 import sys
 from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, DirectionInteraction, CursorPointInteraction, FreeEntryInteraction, Information
-from items import Item
+from items import Item, Spell
 
 class NetHackPlayer(object):
     initialRole = "Random"
@@ -275,6 +275,15 @@ class NetHackPlayer(object):
         self.send ("x")
         return self.watch()
 
+    def pray (self):
+        """ Pray to the gods for help"""
+        self.sendline ("#pray")
+        matched = self.watch()
+        if isinstance (matched, YesNoInteraction) and 'Are you sure' in matched.question:
+            matched = matched.answer ('yes')
+            matched = self.watch()
+        return matched
+
     def search (self):
         """ Search around for hidden stuff"""
         self.send ('s')
@@ -443,6 +452,15 @@ class NetHackPlayer(object):
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'zap' in matched.question:
             matched = matched.answer (item.key)
+        return matched
+
+    def cast (self, spell=None):
+        """ Cast a spell.
+            If no 'spell' is passed in, a SelectDialogInteraction is returned. """
+        self.send ('Z')
+        matched = self.watch()
+        if isinstance (matched, SelectDialogInteraction) and not spell is None:
+            matched = matched.answer (spell.key)
         return matched
 
     def look (self, x, y):
