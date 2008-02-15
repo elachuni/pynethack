@@ -42,6 +42,8 @@ class Interaction (object):
         self.player.pendingInteraction = None
         self.player.send ('\x1b')
         return self.player.watch()
+    def __str__ (self):
+        return '<%s %s>' % (self.__class__.__name__, question)
 
 class Information (object):
     """ I describe a bit of information the game reports.
@@ -49,6 +51,8 @@ class Information (object):
     def __init__ (self, player, message):
         #checkPendingInteraction (player)
         self.message = message
+    def __str__ (self):
+        return '\n'.join(self.message)
 
 class DirectionInteraction (Interaction):
     """ The player should choose a direction here """
@@ -56,15 +60,13 @@ class DirectionInteraction (Interaction):
         super (DirectionInteraction, self).__init__ (player, question)
         match = re.match (r'(?P<question>.*) \[(?P<opts>.*)\] ', question)
         if match is None:
-            self.__opts = keys.dirs.keys()
+            self.options = keys.dirs.keys()
         else:
             self.question = match.group ('question')
-            self.__opts = [opt[0] for opt in keys.dirs.items() if opt[1] in match.group ('opts')]
+            self.options = [opt[0] for opt in keys.dirs.items() if opt[1] in match.group ('opts')]
 
     def answer (self, ans):
         return super (DirectionInteraction, self).answer (keys.dirs[ans])
-    def options (self):
-        return self.__opts[:]
 
 class YesNoInteraction (Interaction):
     """ I describe a yes/no question """
@@ -83,9 +85,7 @@ class YesNoInteraction (Interaction):
         else:
             match = super(YesNoInteraction, self).answer(ans)
         return match
-    def options (self):
-        """ Life is simple """
-        return ["y", "n"]
+    options = ["y", "n"]
 
 class CursorPointInteraction (Interaction):
     """ I'm an interaction that requests the user to select a position in the maze using the cursor. """
@@ -127,9 +127,7 @@ class YesNoQuitInteraction (Interaction):
         else:
             match = super(YesNoQuitInteraction, self).answer(ans)
         return match
-    def options (self):
-        """ Life is simple """
-        return ["y", "n", "q"]
+    options = ["y", "n", "q"]
 
 class FreeEntryInteraction (Interaction):
     """ I describe a prompt to enter some free text. """
@@ -146,9 +144,14 @@ class SelectInteraction (Interaction):
         match = re.match (r'(?P<question>.*) \[(?P<opts>.*) or \?\*\] ', question)
         if not match is None:
             self.question = match.group ('question')
-            self.__opts = match.group ('opts')
-    def options (self):
-        return self.__opts[:]
+            self.options = [Item(key) for key in match.group ('opts')] + [Item('*'), Item('?')]
+        else:
+            self.options = []
+    def answer (self, item):
+        checkPendingInteraction (self.player, self)
+        self.player.pendingInteraction = None
+        self.player.send (item.key)
+        return self.player.watch(selectDialogQuestion=self.question)
 
 class SelectDialogInteraction (Interaction):
     """ I describe a list of options from which you can select one or many alternatives.
@@ -199,10 +202,7 @@ class SelectDialogInteraction (Interaction):
         for i in range(totalPages - 1):
             self.send ('<')
             self.player.watch (['\(end\) ', '\(\d of \d\) '])
-        self.__opts = opts
-
-    def options (self):
-        return self.__opts[:]
+        self.options = opts
 
     def answer (self, items):
         """ 'items': can be a single Item, or a list of Items.
