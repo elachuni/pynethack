@@ -5,7 +5,10 @@ class Item (object):
         self.description = description
         self.category = category
     def __repr__(self):
-        return '<%s %s>' % (self.__class__.__name__, self.description)
+        description = self.key
+        if not self.description is None:
+            description = self.description
+        return '<%s %s>' % (self.__class__.__name__, description)
 
 class Spell (object):
     def __init__ (self, key, description=None, headings=None):

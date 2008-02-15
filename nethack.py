@@ -42,10 +42,9 @@ class NetHackPlayer(object):
         else:
             self.child = pexpect.spawn ("telnet %s" % host)
         self.screen = Screen()
-        self.lastSeenTurn = -1 # Used by 'watch', no need to change this
         self.pendingInteraction = None
         self.info = None
-        self.cachedInventory = None
+        self.history = []
         if not self.host is None:
             self.login()
 
@@ -101,14 +100,18 @@ class NetHackPlayer(object):
             match = match.answer (Item(keys.alignments[self.initialAlignment]))
         return match
 
-    def watch (self, expecting=None):
-        """ Update the screen and see what happens. """
+    def watch (self, expecting=None, selectDialogQuestion=None):
+        """ Update the screen and see what happens.
+            'expecting' is a regex or list of regexes that are checked before regular interactions.
+            'selectDialogQuestion' is a question for selectDialogs, that often show the question before
+                                   the dialog. """
         if isinstance(expecting, basestring):
             expecting = [expecting]
         patterns = ['--More--', pexpect.TIMEOUT]
         matched = None
         found = False
         info = []
+        self.info = None
         while not found:
             i = self.child.expect (patterns, timeout=0.5)
             self.screen.printstr(self.child.before)
@@ -143,7 +146,7 @@ class NetHackPlayer(object):
                         matched = SelectInteraction (self, self.screen.lastMatch())
                         found = True
                     elif self.screen.matches (r'\(end\) |\(\d of\d\) '):
-                        matched = SelectDialogInteraction (self)
+                        matched = SelectDialogInteraction (self, question=selectDialogQuestion)
                         found = True
                     elif self.screen.matches (r'In what direction.*\?.*'):
                         matched = DirectionInteraction (self, self.screen.lastMatch())
@@ -173,11 +176,9 @@ class NetHackPlayer(object):
             self.screen.dump()
         if len(info) > 0:
             self.info = Information (self, info)
+            self.history.append(self.info)
             if matched is None:
                 matched = self.info
-        if self.turn() != self.lastSeenTurn:
-            self.cachedInventory = None
-            self.lastSeenTurn = self.turn()
         return matched
 
     def parseOptions (self, sep, x, y, w, h):
@@ -208,7 +209,7 @@ class NetHackPlayer(object):
         self.send (keys.dirs[direction])
         return self.watch()
 
-    def openDoor (self, direction):
+    def open (self, direction):
         """ Open a door in the specified direction.  See 'go' for list of possible directions. """
         self.send ('o')
         matched = self.watch()
@@ -216,7 +217,7 @@ class NetHackPlayer(object):
             matched = matched.answer (direction)
         return matched
 
-    def closeDoor (self, direction):
+    def close (self, direction):
         """ Close a door in the specified direction.  See 'go' for list of possible directions. """
         self.send ('c')
         matched = self.watch()
@@ -242,22 +243,36 @@ class NetHackPlayer(object):
         """ Quaff a potion.
             'potion' should have been retrieved from our inventory recently.
             If you leave 'potion' as default, a SelectDialogInteraction will return"""
-        print "Quaffing %s..." % potion.description
         self.send ('q')
         matched = self.watch()
         if isinstance (matched, SelectInteraction):
-            matched = matched.answer (potion.key)
+            matched = matched.answer (potion)
         return matched
 
     def eat (self, food=Item('*')):
         """ Eat something.
             'food' should have been retrieved from our inventory recently.
             If you leave 'potion' as default, a SelectDialogInteraction will return """
-        print "Eating %s..." % food.description
         self.send ('e')
         matched = self.watch()
         if isinstance (matched, SelectInteraction):
-            matched = matched.answer (potion.key)
+            matched = matched.answer (potion)
+        return matched
+
+    def offer (self, corpse=Item('*')):
+        """ Offer a sacrifice to the gods. """
+        self.sendline ('#offer')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction):
+            matched = matched.answer (corpse)
+        return matched
+
+    def rub (self, item=Item('*')):
+        """ Rub a lamp or a stone """
+        self.sendline ('#rub')
+        matched = self.watch()
+        if isinstance (matched, SelectInteraction):
+            matched = matched.answer (item)
         return matched
 
     def sit (self):
@@ -302,13 +317,12 @@ class NetHackPlayer(object):
         """ Drop an item.  'item' should have been retrieved recently from our inventory.
             If 'amount' is an integer, drop that amount of items
             (to drop one gold piece, for example) """
-        print "Dropping %s..." % item.description
         self.send ('d')
         if not amount is None:
             self.send (str(amount))
         matched = self.watch()
         if isinstance (matched, SelectInteraction):
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def multiDrop (self, items):
@@ -332,7 +346,7 @@ class NetHackPlayer(object):
         self.send ('T')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'take off' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def quiver (self, item=Item('*')):
@@ -341,7 +355,7 @@ class NetHackPlayer(object):
         self.send ('Q')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'ready' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def wear (self, item=Item('*')):
@@ -350,7 +364,7 @@ class NetHackPlayer(object):
         self.send ('W')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'wear' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def putOn (self, item=Item('*')):
@@ -359,7 +373,7 @@ class NetHackPlayer(object):
         self.send ('W')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'put on' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def wield (self, item=Item('*')):
@@ -368,7 +382,7 @@ class NetHackPlayer(object):
         self.send ('w')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'wield' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def read (self, item=Item('*')):
@@ -377,7 +391,7 @@ class NetHackPlayer(object):
         self.send ('r')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'read' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def throw(self, item=Item('*'), direction=None):
@@ -386,7 +400,7 @@ class NetHackPlayer(object):
         self.send ('t')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'throw' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         if isinstance (matched, DirectionInteraction) and not direction is None:
             matched = matched.answer (direction)
         return matched
@@ -398,7 +412,7 @@ class NetHackPlayer(object):
         if isinstance (matched, YesNoQuitInteraction) and 'Name an individual object' in matched.question:
             matched = matched.answer ('y')
         if isinstance (matched, SelectInteraction) and 'name' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         if isinstance (matched, FreeEntryInteraction) and 'What do you want to name' in matched.question:
             if name is not None:
                 matched = matched.answer (name)
@@ -421,7 +435,7 @@ class NetHackPlayer(object):
         self.send ('E')
         matched = self.watch ()
         if isinstance (matched, SelectInteraction) and 'write with' in matched.question:
-            matched = matched.answer (using.key)
+            matched = matched.answer (using)
         if isinstance (matched, FreeEntryInteraction) and 'What do you want to write' in matched.question:
             if msg is not None:
                 matched = matched.answer (msg)
@@ -433,7 +447,7 @@ class NetHackPlayer(object):
         self.send ('a')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'use or apply' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def remove (self, item=Item('*')):
@@ -442,7 +456,7 @@ class NetHackPlayer(object):
         self.send ('R')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'remove' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def zap (self, item=Item('*')):
@@ -451,7 +465,7 @@ class NetHackPlayer(object):
         self.send ('z')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'zap' in matched.question:
-            matched = matched.answer (item.key)
+            matched = matched.answer (item)
         return matched
 
     def cast (self, spell=None):
@@ -460,10 +474,10 @@ class NetHackPlayer(object):
         self.send ('Z')
         matched = self.watch()
         if isinstance (matched, SelectDialogInteraction) and not spell is None:
-            matched = matched.answer (spell.key)
+            matched = matched.answer (spell)
         return matched
 
-    def look (self, x, y):
+    def describe (self, x, y):
         """ Look at what is at a certain coordinate in the dungeon """
         self.send (";")
         matched = self.watch ()
@@ -483,30 +497,29 @@ class NetHackPlayer(object):
     def inventory (self, categories=None):
         """ Retrieve your inventory.  'categories' can be a list of strings describing the categories
             you want to restrict to, as "Weapons", "Potions", etc. """
-        if self.cachedInventory is None:
-            self.send ('i')
-            more_pages = True
-            self.cachedInventory = []
-            while more_pages:
-                matched = self.watch([r'\(end\) ', r'\(\d of \d\)'])
-                lines = self.screen.getArea (self.screen.cursorX - len(matched), 0, h=self.screen.cursorY)
-                for line in lines:
-                    if line.find(' - ') == -1:
-                        category = line.strip()
-                    else:
-                        key, item = line.split(' - ', 1)
-                        it = Item (key.strip(), description=item.strip(), category=category)
-                        self.cachedInventory.append(it)
-                self.send (' ')
-                if matched != '(1 of 2)':
-                    more_pages = False
-            self.watch()
+        self.send ('i')
+        more_pages = True
+        inventory = []
+        while more_pages:
+            matched = self.watch([r'\(end\) ', r'\(\d of \d\)'])
+            lines = self.screen.getArea (self.screen.cursorX - len(matched), 0, h=self.screen.cursorY)
+            for line in lines:
+                if line.find(' - ') == -1:
+                    category = line.strip()
+                else:
+                    key, item = line.split(' - ', 1)
+                    it = Item (key.strip(), description=item.strip(), category=category)
+                    inventory.append(it)
+            self.send (' ')
+            if matched != '(1 of 2)':
+                more_pages = False
+        self.watch()
         if isinstance (categories, basestring):
             categories = [categories]
         if categories is None:
-            return self.cachedInventory
+            return inventory
         else:
-            return [item for item in self.cachedInventory if item.category in categories]
+            return [item for item in inventory if item.category in categories]
 
     def strength (self):
         """Returns my current strength.  For strength above 18 a floating point number is returned,
@@ -683,3 +696,9 @@ class NetHackPlayer(object):
         """ Returns our current y-position (row) within the current dungeon level """
         checkPendingInteraction (self)
         return self.screen.cursorY - 1 # There's one row of heading above the maze
+
+    def look(self, x, y):
+        checkPendingInteraction (self)
+        if 0 > x or x >= 80 or 0 > y or y >= 21:
+            raise ValueError, "Invalid cell position (%d,%d)" % (x, y)
+        return self.screen.screen[y + 1][x]
