@@ -24,6 +24,7 @@ from scraper import Screen
 import nethackkeys as keys
 import time
 import sys
+import os
 from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, DirectionInteraction, CursorPointInteraction, FreeEntryInteraction, Information
 from items import Item, Spell
 
@@ -36,6 +37,9 @@ class NetHackPlayer(object):
         self.user = user
         self.passwd = passwd
         self.host = host
+        os.environ['LINES'] = '24'
+        os.environ['COLUMNS'] = '80'
+        os.environ['TERM'] = 'xterm'
         if host is None:
             userstr = (not user is None) and ('-u ' + user) or ''
             self.child = pexpect.spawn ("nethack %s" % userstr)
@@ -113,7 +117,7 @@ class NetHackPlayer(object):
         info = []
         self.info = None
         while not found:
-            i = self.child.expect (patterns, timeout=0.5)
+            i = self.child.expect (patterns, timeout=0.3)
             self.screen.printstr(self.child.before)
             if self.child.after != pexpect.TIMEOUT:
                 self.screen.printstr(self.child.after)
@@ -256,7 +260,7 @@ class NetHackPlayer(object):
         self.send ('e')
         matched = self.watch()
         if isinstance (matched, SelectInteraction):
-            matched = matched.answer (potion)
+            matched = matched.answer (food)
         return matched
 
     def offer (self, corpse=Item('*')):
@@ -405,12 +409,13 @@ class NetHackPlayer(object):
             matched = matched.answer (direction)
         return matched
 
-    def name (self, item=Item('*'), name=None):
+    def name (self, item=Item('*'), individualObject=True, name=None):
         """ Name an individual object """
         self.sendline ('#name')
         matched = self.watch()
         if isinstance (matched, YesNoQuitInteraction) and 'Name an individual object' in matched.question:
-            matched = matched.answer ('y')
+            answer = individualObject and 'y' or 'n'
+            matched = matched.answer (answer)
         if isinstance (matched, SelectInteraction) and 'name' in matched.question:
             matched = matched.answer (item)
         if isinstance (matched, FreeEntryInteraction) and 'What do you want to name' in matched.question:
@@ -482,6 +487,15 @@ class NetHackPlayer(object):
         self.send (";")
         matched = self.watch ()
         if isinstance (matched, Information) and matched.message == ['Pick an object.']:
+            matched = CursorPointInteraction (self, matched.message)
+            matched = matched.answer (x, y)
+        return matched
+
+    def travel (self, x, y):
+        """ Move via a shortest-path algorithm to a point on the map """
+        self.send ("_")
+        matched = self.watch ()
+        if isinstance (matched, Information) and '(For instructions type a ?)' in matched.message[0]:
             matched = CursorPointInteraction (self, matched.message)
             matched = matched.answer (x, y)
         return matched
@@ -702,3 +716,12 @@ class NetHackPlayer(object):
         if 0 > x or x >= 80 or 0 > y or y >= 21:
             raise ValueError, "Invalid cell position (%d,%d)" % (x, y)
         return self.screen.screen[y + 1][x]
+
+    def interact(self):
+        """ Play for yourself for a while """
+        checkPendingInteraction(self)
+        self.child.send (chr(18)) # CTRL+R to redraw screen
+        self.child.interact (escape_character=chr(1))
+        print "\n"*25
+        self.child.send (chr(18))
+        return self.watch()
