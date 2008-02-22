@@ -1,3 +1,5 @@
+from interactions import YesNoQuitInteraction, Information
+
 from nethack import NetHackPlayer
 
 W = 80
@@ -77,57 +79,60 @@ class Introspective (NetHackPlayer):
         print "Slimed:", self.slimed()
         print "Encumbrance:", self.encumbrance()
 
-class Explorer (NetHackPlayer):
-    """ I crawl the dungeon searching for stairs, and go down them """
-    def __init__ (self, user=None, passwd=None, host=None):
-        super (Explorer, self).__init__ (user, passwd, host)
+class LevelStuff (object):
+    def __init__(self):
         self.beenThere = [[False] * W for i in range(H)]
         self.reachable = [['Maybe'] * W for i in range(H)]
+        self.searched = [[0] * W for i in range(H)]
+
+class Explorer (NetHackPlayer):
+    """ I crawl the dungeon searching for stairs, and go down them """
+    dx = {'N':0,'NW':-1,'W':-1,'SW':-1,'S':0,'SE':1,'E':1,'NE':1}
+    dy = {'N':-1,'NW':-1,'W':0,'SW':1,'S':1,'SE':1,'E':0,'NE':-1}
+
+    initialRole = 'Barbarian' # Good class for really dumb bots
+
+    def __init__ (self, user=None, passwd=None, host=None):
+        super (Explorer, self).__init__ (user, passwd, host)
+        self.levelStuffs = {}
         dead = False
 
-    def hasInspected (self, j, i):
-        """ True if you've been in some cell adjacent to (j,i) -- ie you've been able to see what's there
+    def hasInspected (self, y, x):
+        """ True if you've been in some cell adjacent to (y,x) -- ie you've been able to see what's there
             even if there's no light in the room (unless you're blind... we'll worry about that later)"""
-        y = [j + 1, j + 1, j + 1, j, j - 1, j - 1, j - 1, j, j]
-        x = [i - 1, i, i + 1, i + 1, i + 1, i, i - 1, i - 1, i]
         result = False
-        for idx in range(len(y)):
-            if 0 <= y[idx] and y[idx] < H and 0 <= x[idx] and x[idx] < W:
-                if self.beenThere[y[idx]][x[idx]]:
+        for d in self.dy.keys():
+            if 0 <= y+self.dy[d] and y+self.dy[d] < H and 0 <= x+self.dx[d] and x+self.dx[d] < W:
+                if self.beenThere[y+self.dy[d]][x+self.dx[d]]:
                     result = True
         return result
 
-    def somethingToExploreAt (self, j, i):
+    def somethingToExploreAt (self, y, x):
         """ True if some cell surrounding (j, i) may be reachable """
-        y = [j + 1, j + 1, j + 1, j, j - 1, j - 1, j - 1, j]
-        x = [i - 1, i, i + 1, i + 1, i + 1, i, i - 1, i - 1]
         result = False
-        for idx in range(len(y)):
-            if 0 <= y[idx] and y[idx] < H and 0 <= x[idx] and x[idx] < W:
-                if self.reachable[y[idx]][x[idx]] == 'Maybe':
+        for d in self.dy.keys():
+            if 0 <= y+self.dy[d] and y+self.dy[d] < H and 0 <= x+self.dx[d] and x+self.dx[d] < W:
+                if self.reachable[y+self.dy[d]][x+self.dx[d]] == 'Maybe':
                     result = True
         return result
 
     def reachableDistance (self, j, i):
-        """ Returns a full matrix of distances with 'graph', starting from ('j', 'i'),
+        """ Calculates a full matrix of distances with 'graph', starting from ('j', 'i'),
             traveling only along reachable squares """
-        dy = [1, 0, -1, 0]
-        dx = [0, 1, 0, -1]
-        distances = [[-1] * W for row in range(H)]
-        distances[j][i] = 0
+        self.distances = [[-1] * W for row in range(H)]
+        self.distances[j][i] = 0
         stack = [(j, i)]
         while len(stack):
             y, x = stack.pop()
-            for idx in range(len(dx)):
-                if distances[y+dy[idx]][x+dx[idx]] == -1 and self.reachable[y+dy[idx]][x+dx[idx]] == 'Yes':
-                    distances[y+dy[idx]][x+dx[idx]] = distances[y][x] + 1
-                    stack = [(y+dy[idx], x+dx[idx])] + stack
-        return distances
+            for d in self.dx.keys():
+                if self.distances[y+self.dy[d]][x+self.dx[d]] == -1 and self.reachable[y+self.dy[d]][x+self.dx[d]] == 'Yes':
+                    self.distances[y+self.dy[d]][x+self.dx[d]] = self.distances[y][x] + 1
+                    stack = [(y+self.dy[d], x+self.dx[d])] + stack
 
     def normalExploratoryDecision (self):
         for j in range(H):
             for i in range(W):
-                if self.look(i, j).char in r'.#?\dfkx@+><}]': # Floor and stuff lying there
+                if self.look(i, j).char in r'.#?\dfkx@+><%$(}][{):!"`/_': # Floor and stuff lying there
                     self.reachable[j][i] = 'Yes'
                 elif self.beenThere[j][i]:
                     self.reachable[j][i] = 'Yes'
@@ -142,35 +147,117 @@ class Explorer (NetHackPlayer):
         interesting = [[0] * W for i in range(H)]
         for j in range(H):
             for i in range(W):
+                if self.look(i, j).char in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:@&;' and not self.look(i, j).inverse: # Monsters are interesting
+                    interesting[j][i] = 1
                 if self.reachable[j][i] == 'Yes' and not self.beenThere[j][i] and self.somethingToExploreAt (j, i):
                     interesting[j][i] = 1
+                elif self.look (i, j).char == '>':
+                    interesting[j][i] = 2
         sites = [(j, i) for j in range(H) for i in range(W) if interesting[j][i]]
         if len(sites) == 0:
             return None
-        distances = self.reachableDistance (self.y(), self.x())
-        sites = [site for site in sites if distances[site[0]][site[1]] > 0]
+        self.reachableDistance (self.y(), self.x())
+        sites = [site for site in sites if self.distances[site[0]][site[1]] > 0]
         if len(sites) == 0:
             return None
         best = sites[0]
         for site in sites:
-            if distances[site[0]][site[1]] < distances[best[0]][best[1]]:
+            if interesting[site[0]][site[1]] > interesting[best[0]][best[1]] or (interesting[site[0]][site[1]] == interesting[best[0]][best[1]] and self.distances[site[0]][site[1]] < self.distances[best[0]][best[1]]):
                 best = site
-        return best
+        curY, curX = best
+        while self.distances[curY][curX] > 0:
+            for d in self.dx.keys():
+                if 0 <= curY-self.dy[d] and curY-self.dy[d] < H and 0 <= curX-self.dx[d] and curX-self.dx[d] < W:
+                    dist = self.distances[curY-self.dy[d]][curX-self.dx[d]]
+                    if dist >= 0 and dist < self.distances[curY][curX]:
+                        curY = curY-self.dy[d]
+                        curX = curX-self.dx[d]
+                        if self.distances[curY][curX] == 0:
+                            return d
+                        break
 
-    def shortestPath (self, j, i):
-        """ Returns the shortest path to (j, i) along reachable cells. """
-        pos = (j, i)
-        dx = [-1, 0, 1, 0]
-        dy = [0, 1, 0, -1]
-        while distance:
-            pass
+    def searchingExploratoryDecision (self):
+        pass
+    def nextToClosedDoor(self):
+        """ Returns the direction in which a closed door is if I'm standing next to a door,
+            or None."""
+        x = self.x()
+        y = self.y()
+        for d in self.dx.keys():
+            cell = self.look(x + self.dx[d], y + self.dy[d])
+            if cell.char == '+' and cell.foreground == 3:
+                return d
+
+    def nextToMonster(self):
+        """ Returns the direction in which a monster is if I'm standing next to a monster,
+            or None."""
+        x = self.x()
+        y = self.y()
+        for d in self.dx.keys():
+            cell = self.look(x + self.dx[d], y + self.dy[d])
+            if cell.char in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:@&;' and not cell.inverse:
+                return d
+            elif cell.char == '~' and not cell.foreground == 2:
+                return d
+
+    def setLevelStuffFromDungeonLevel(self):
+        dlevel = str(self.dungeonLevel())
+        if not self.levelStuffs.has_key (dlevel):
+            self.levelStuffs[dlevel] = LevelStuff()
+        lStuff = self.levelStuffs[dlevel]
+        self.beenThere = lStuff.beenThere
+        self.reachable = lStuff.reachable
+        self.searched = lStuff.searched
+    
+
     def run (self):
+        dead = False
+        previousPos = None
         target = None
+        atNextPos = None
         while not dead:
+            self.setLevelStuffFromDungeonLevel()
+            moved = False
             self.beenThere [self.y()][self.x()] = True
-            if not target is None and target[0] == self.y() and target[1] == self.x(): # We've reached our target
-                target = None
-            if target is None:
-                target = self.normalExploratoryDecision (self)
-            #path = self.shortestPath (target[0], target[1])
-            
+            monster = self.nextToMonster()
+            if monster:
+                print "Monster towards the", monster
+                msg = self.go (monster)
+                moved = True
+            door = self.nextToClosedDoor()
+            if not moved and door:
+                print "Door towards the", door
+                msg = self.kick (door)
+                moved = True
+            if not moved and atNextPos == '>':
+                msg = self.go ('D')
+                moved = True
+                atNextPos = None
+            if not moved:
+                previousPos = (self.x(), self.y())
+                d = self.normalExploratoryDecision ()
+                if d is None:
+                    # We seem to have crawled the whole dungeon level, we'll have to search
+                    d = self.searchingExploratoryDecision ()
+                    raise ValueError, "I'm lost :("
+                if not atNextPos is None and len(d) == 2:
+                    if atNextPos in '|-': # You can't leave doorways diagonally
+                        d = atNextPos == '|' and d[1] or d[0]
+                target = (self.y()+self.dy[d], self.x()+self.dx[d])
+                atNextPos = self.look (target[1],target[0]).char
+                if len(d) == 2 and atNextPos in '|-': # You can't enter doorways diagonally
+                    d = atNextPos == '|' and d[1] or d[0]
+                msg = self.go (d)
+                moved = True
+
+            if isinstance (msg, YesNoQuitInteraction) and 'Do you want your possessions identified?' in msg.message:
+                dead = True
+            elif isinstance (msg, Information) and 'You try to move the boulder' in msg.message[0]:
+                # Just don't try again
+                self.beenThere[target[0]][target[1]] = True
+            else:
+                print isinstance(msg, Information), isinstance(msg, Information) and msg.message
+if __name__ == '__main__':
+    e = Explorer()
+    e.play()
+    e.run()
