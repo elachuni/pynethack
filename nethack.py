@@ -37,6 +37,10 @@ class NetHackPlayer(object):
         self.user = user
         self.passwd = passwd
         self.host = host
+        self.pendingInteraction = None
+        self.info = None
+        self.history = []
+        self.echo = False
         os.environ['LINES'] = '24'
         os.environ['COLUMNS'] = '80'
         os.environ['TERM'] = 'xterm'
@@ -46,20 +50,34 @@ class NetHackPlayer(object):
         else:
             self.child = pexpect.spawn ("telnet %s" % host)
         self.screen = Screen()
-        self.pendingInteraction = None
-        self.info = None
-        self.history = []
         if not self.host is None:
             self.login()
 
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        del state['child']
+        return state
+
+    def __setstate__(self, state):
+        """ FIXME: __setstate__ duplicates constructor functionallity """
+        os.environ['LINES'] = '24'
+        os.environ['COLUMNS'] = '80'
+        os.environ['TERM'] = 'xterm'
+        self.__dict__ = state
+        if self.host is None:
+            userstr = (not self.user is None) and ('-u ' + self.user) or ''
+            self.child = pexpect.spawn ("nethack %s" % userstr)
+        else:
+            self.child = pexpect.spawn ("telnet %s" % self.host)
+
     def send (self, msg):
         """ Sends 'msg' down the wire. """
-        checkPendingInteraction (self)
+        checkPendingInteraction(self)
         self.child.send (msg)
 
     def sendline (self, msg):
         """ Sends 'msg' down the wire followed by a newline character. """
-        checkPendingInteraction (self)
+        checkPendingInteraction(self)
         self.child.sendline (msg)
 
     def login(self):
@@ -111,7 +129,7 @@ class NetHackPlayer(object):
                                    the dialog. """
         if isinstance(expecting, basestring):
             expecting = [expecting]
-        patterns = ['--More--', pexpect.TIMEOUT]
+        patterns = ['--More--', pexpect.TIMEOUT, pexpect.EOF]
         matched = None
         found = False
         info = []
@@ -119,7 +137,7 @@ class NetHackPlayer(object):
         while not found:
             i = self.child.expect (patterns, timeout=0.3)
             self.screen.printstr(self.child.before)
-            if self.child.after != pexpect.TIMEOUT:
+            if not self.child.after in [pexpect.TIMEOUT, pexpect.EOF]:
                 self.screen.printstr(self.child.after)
             if i == 0:
                 # --More--
@@ -177,7 +195,11 @@ class NetHackPlayer(object):
                     #print "Expecting:", patterns
                     #print "Happy hacking!"
                     #raise ValueError, "Unexpected Output"
-            self.screen.dump()
+            elif i == 2:
+                # Game finished
+                found = True
+            if self.echo:
+                self.screen.dump()
         if len(info) > 0:
             self.info = Information (self, info)
             self.history.append(self.info)
@@ -498,6 +520,14 @@ class NetHackPlayer(object):
         if isinstance (matched, Information) and '(For instructions type a ?)' in matched.message[0]:
             matched = CursorPointInteraction (self, matched.message)
             matched = matched.answer (x, y)
+        return matched
+
+    def save(self):
+        """ Save this game and exit """
+        self.send ('S')
+        matched = self.watch ()
+        if isinstance (matched, YesNoInteraction):
+            matched = matched.answer('y')
         return matched
 
     def quit (self):

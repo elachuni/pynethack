@@ -1,4 +1,4 @@
-from interactions import YesNoQuitInteraction, Information
+from interactions import YesNoInteraction, YesNoQuitInteraction, Information
 
 from nethack import NetHackPlayer
 
@@ -28,7 +28,7 @@ class VeryDumbPlayer (NetHackPlayer):
 
 class Barney (NetHackPlayer):
     """ I drink and eat all I can and then take a rest. """
-    initialRole = "Wizard"
+    initialRole = "Archeologist"
     initialGender = "Random"
     initialRace = "Random"
     initialAlignment = "Random"
@@ -36,8 +36,20 @@ class Barney (NetHackPlayer):
     def run(self):
         done = False
         while not done:
+            if self.pendingInteraction is not None:
+                p = self.pendingInteraction
+                if isinstance(p, YesNoInteraction):
+                    if p.question == 'Stop eating?':
+                        p.answer('no')
+                        continue
+                elif isinstance(p, YesNoQuitInteraction):
+                    # Oops, we must have ate too much
+                    p.answer('q')
+                    done = True
+                    continue
             goodies = self.inventory(categories=['Potions', 'Comestibles'])
             if len(goodies) == 0:
+                self.sit()
                 done = True
             else:
                 item = goodies[0]
@@ -45,8 +57,6 @@ class Barney (NetHackPlayer):
                     self.eat(item)
                 else:
                     self.quaff(item)
-        self.sit()
-        self.child.interact()
 
 class Introspective (NetHackPlayer):
     """ I just print out all my stats and exit """
@@ -162,7 +172,9 @@ class Explorer (NetHackPlayer):
             return None
         best = sites[0]
         for site in sites:
-            if interesting[site[0]][site[1]] > interesting[best[0]][best[1]] or (interesting[site[0]][site[1]] == interesting[best[0]][best[1]] and self.distances[site[0]][site[1]] < self.distances[best[0]][best[1]]):
+            if (interesting[site[0]][site[1]] > interesting[best[0]][best[1]] or
+              (interesting[site[0]][site[1]] == interesting[best[0]][best[1]] and
+              self.distances[site[0]][site[1]] < self.distances[best[0]][best[1]])):
                 best = site
         curY, curX = best
         while self.distances[curY][curX] > 0:

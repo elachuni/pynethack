@@ -43,7 +43,7 @@ class Interaction (object):
         self.player.send ('\x1b')
         return self.player.watch()
     def __str__ (self):
-        return '<%s %s>' % (self.__class__.__name__, question)
+        return '<%s %s>' % (self.__class__.__name__, self.question)
 
 class Information (object):
     """ I describe a bit of information the game reports.
@@ -121,7 +121,7 @@ class YesNoQuitInteraction (Interaction):
             self.question = match.group ('question')
             self.defaultAnswer = match.group ('def')
     def answer (self, ans):
-        ans = self.__opts.get(ans)
+        ans = self.__opts.get(ans.lower())
         if ans is None:
             match = self.answerDefault()
         else:
