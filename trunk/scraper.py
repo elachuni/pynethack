@@ -25,8 +25,21 @@ class Cell(object):
         if someEscape:
             result += '\x1b[m'
         return result
+    def set(self, char, bold, inverse, foreground):
+        self.char = char
+        self.bold = bold
+        self.inverse = inverse
+        self.foreground = foreground
 
 class Screen(object):
+    """ A Screen holds a bi-dimensional array of Cell that represents the state
+        of each character on a 80x24 terminal.
+        
+        New output should be added via the printstr() method, passing in any
+        output that has occurred, straight from the terminal.
+        
+        The state of the screen can be queried with the getArea(), getRow() and
+        matches() methods"""
     def __init__(self):
         self.screen = [[Cell() for cell in range(WIDTH)] for x in range(HEIGHT + 1)]
         self.cursorX = 0
@@ -39,38 +52,52 @@ class Screen(object):
         self.charAttBold = False
         self.charAttInverse = False
         self.charAttForeground = 9
-        self.escape_sequences = {"( ": self.setCharset, # Set G0 character set
-                                 ") ": self.setCharset, # Set G1 character set
-                                 "[$d":self.gotoY, # Line position absolute
-                                 "[$;$H": self.gotoXY, # Goto position
-                                 "[1;24r": self.ignore, # Set scrolling size of Window (1, 24)
-                                 "[m": self.ignore, # Turn off character attributes
-                                 "[$l": self.ignore, # Reset mode
-                                 "[?$h": self.ignore, # Set DEC private mode
-                                 "[?$l": self.ignore, # Reset DEC private mode
-                                 "=": self.ignore, # Set Application Keypad
-                                 ">": self.ignore, # Set Normal Keypad
-                                 "[H": self.gotoHome, # Move cursor to upper left corner
-                                 "[2J": self.clearScreen, # Clear entire screen
-                                 "[K": self.eraseToEndOfLine,
-                                 "[A": self.cursorUp,
-                                 "[C": self.cursorRight,
-                                 "[$m": self.setCharacterAtts,
-                                 "[m": self.resetCharAtts,
-                                 "7": self.saveCursor, # Save cursor position and attributes
-                                 "8": self.restoreCursor # Restore cursor position and attributes
-                                }
+        self.escape_sequences = self.escapeSequenceDict()
 
-    def setAtts (self, cell):
-        cell.bold = self.charAttBold
-        cell.inverse = self.charAttInverse
-        cell.foreground = self.charAttForeground
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        del state['escape_sequences']
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        self.escape_sequences = self.escapeSequenceDict()
+
+    def escapeSequenceDict(self):
+        """ Generate XTerm's escape secuences.
+            This dictionary can be safely cached.
+        """
+        return {"( ": self.setCharset, # Set G0 character set
+                ") ": self.setCharset, # Set G1 character set
+                "[$d":self.gotoY, # Line position absolute
+                "[$;$H": self.gotoXY, # Goto position
+                "[1;24r": self.ignore, # Set scrolling size of Window (1, 24)
+                "[m": self.ignore, # Turn off character attributes
+                "[$l": self.ignore, # Reset mode
+                "[?$h": self.ignore, # Set DEC private mode
+                "[?$l": self.ignore, # Reset DEC private mode
+                "=": self.ignore, # Set Application Keypad
+                ">": self.ignore, # Set Normal Keypad
+                "[H": self.gotoHome, # Move cursor to upper left corner
+                "[2J": self.clearScreen, # Clear entire screen
+                "[K": self.eraseToEndOfLine,
+                "[A": self.cursorUp,
+                "[C": self.cursorRight,
+                "[$m": self.setCharacterAtts,
+                "[m": self.resetCharAtts,
+                "7": self.saveCursor, # Save cursor position and attributes
+                "8": self.restoreCursor # Restore cursor position and attributes
+               }
 
     def dump(self):
+        """ Debugging method.
+            Prints the whole screen (with formatting attributes and all).
+        """
         for row in self.screen:
             print ''.join([str(cell) for cell in row])
 
     def printstr (self, cmd):
+        """ Updates the state of the screen with a new chunk of output. """
         index = 0
         while index < len(cmd):
             if cmd[index] == '\x1b':
@@ -90,13 +117,13 @@ class Screen(object):
                         else:
                             break
                     if seqidx == len(seq):
-                        #print [cmd[index:subidx]], "=>", self.escape_sequences[seq].__name__
                         self.escape_sequences[seq](cmd[index:subidx])
                         index = subidx
                         found = True
                         break
                 if not found:
                     print
+                    print "Unhandled escape sequence."
                     raise ValueError, list(cmd[index-1:index+30])
             else:
                 #print [cmd[index]], "=> printch",
@@ -113,10 +140,12 @@ class Screen(object):
                     print [cmd]
                     print 'Context:'
                     print [cmd[index-10:index]], "We're here!", [cmd[index:index+10]]
+                    import pdb; pdb.set_trace()
                     raise
                 index += 1
 
     def printch (self, ch):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         if self.cursorX >= WIDTH or self.cursorX < 0 or self.cursorY >= HEIGHT or self.cursorY < 0:
             raise IndexError
         if ch == '\r':
@@ -128,8 +157,10 @@ class Screen(object):
         elif ch == '\x0f': # Shift in - Invoke G0 charset
             self.charSet = self.G0
         elif ch >= ' ' and ch <= '~':
-            self.screen[self.cursorY][self.cursorX].char = ch
-            self.setAtts (self.screen[self.cursorY][self.cursorX])
+            self.screen[self.cursorY][self.cursorX].set(ch,
+                                                        self.charAttBold,
+                                                        self.charAttInverse,
+                                                        self.charAttForeground)
             self.cursorX += 1
             if self.cursorX >= 80:
                 if self.cursorY < HEIGHT - 1:
@@ -140,24 +171,31 @@ class Screen(object):
         self.cursorY = min (self.cursorY, HEIGHT - 1)
 
     def gotoHome (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         self.cursorX = 0
         self.cursorY = 0
 
     def clearScreen (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         ## Shouldn't this send the cursor to (0,0) also??
         self.screen = [[Cell() for cell in range(WIDTH)] for x in range(HEIGHT + 1)]
 
     def leftN (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this.
+            FIXME: This escape handler isn't bound to any escape sequence.
+        """
         val = self.parseInt (cmd, 1)
         #print "Left", val
         self.cursorX -= val
 
     def gotoY (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         val = self.parseInt (cmd, 1)
         #print "gotoY", val
         self.cursorY = val - 1
 
     def gotoXY (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         row = self.parseInt (cmd, 1)
         col = self.parseInt (cmd, cmd.index(';') + 1)
         #print "gotoXY", row, col
@@ -165,6 +203,7 @@ class Screen(object):
         self.cursorX = col - 1
 
     def setCharset (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         charset = "default"
         if cmd[1] == '0':
             charset = "dec"
@@ -180,29 +219,38 @@ class Screen(object):
             raise ValueError, "Unknown charset " + cmd
 
     def saveCursor (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         self.savedCursorX = self.cursorX
         self.savedCursorY = self.cursorY
 
     def restoreCursor (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         self.cursorX = self.savedCursorX
         self.cursorY = self.savedCursorY
 
     def cursorRight (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         self.cursorX += 1
 
     def cursorUp (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         self.cursorY -= 1
 
     def eraseToEndOfLine (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         for i in range(self.cursorX, WIDTH):
             self.screen[self.cursorY][i] = Cell()
 
     def insertLines (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this
+            FIXME: This escape handler isn't bound to any escape sequence.
+        """
         val = self.parseInt (cmd, 1)
         print "InsertLines", val
         self.screen = self.screen[:self.cursorY] + [[Cell() for cell in range(WIDTH)] for x in range(val)] + self.screen [self.cursorY:HEIGHT-val]
 
     def setCharacterAtts (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         val = self.parseInt (cmd, 1)
         if val == 0:
             self.resetCharAtts (cmd)
@@ -217,14 +265,17 @@ class Screen(object):
 
 
     def resetCharAtts (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         self.charAttBold = False
         self.charAttInverse = False
         self.charAttForeground = 9
 
     def ignore (self, cmd):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         pass
 
     def parseInt (self, cmd, startAt=0):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         idx = startAt + 1
         val = int(cmd[startAt])
         while cmd[idx].isdigit():
@@ -233,13 +284,16 @@ class Screen(object):
         return val
 
     def getArea (self, x=0, y=0, w=WIDTH, h=HEIGHT):
+        """ Retrieve a rectangular area of the screen """
         return [''.join ([cell.char for cell in row[x:x+w]]) for row in self.screen[y:y+h]]
 
     def getRow (self, row, start=0, finish=WIDTH):
+        """ Retrieve a row off the screen, or a substring of a row """
         result = ''.join ([cell.char for cell in self.screen[row][start:finish]])
         return result
 
     def getCharAtRelativePos (self, offsetX=0, offsetY=0):
+        """ Internal auxiliary method.  You shouldn't need to invoke this """
         posX = self.cursorX + offsetX
         posY = self.cursorY + offsetY
         if posX < 0 or posX >= WIDTH or posY < 0 or posY >= HEIGHT:
@@ -247,8 +301,9 @@ class Screen(object):
         return self.screen[posY][posX].char
 
     def matches (self, pattern):
-        """ Returns True if the string appearing right before the cursor matches 'pattern'.
-            pattern can be any Python regular expression.
+        """ Returns True if the string appearing right before the cursor matches
+            'pattern'.
+            Pattern can be any Python regular expression.
         """
         self._last_match = None
         toMatch = self.getRow (self.cursorY, finish=self.cursorX)
@@ -256,21 +311,23 @@ class Screen(object):
             pattern = pattern + '$'
         regex = re.search (pattern, toMatch)
         if not regex is None:
-          self._last_match = regex.group(0)
+            self._last_match = regex.group(0)
         return not self._last_match is None
 
     def lastMatch (self):
-        """ Returns last match found by 'matches'.  Returns the exact string that matched,
-            not the pattern """
+        """ Returns last match found by 'matches'.  Returns the exact string
+            that matched, not the pattern """
         if hasattr(self, '_last_match'):
             return self._last_match
         else:
             return None
 
     def multiMatch (self, patterns):
-        """ Returns the string that appears before the cursor that matches some pattern in 'patterns',
-            or None if none match.  See 'matches' for a list of special characters in the patterns """
+        """ Returns the string that appears before the cursor that matches some
+            pattern in 'patterns', or None if none match.
+        """
         for pattern in patterns:
             if self.matches (pattern):
                 return self._last_match
         return None
+
