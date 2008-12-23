@@ -1,5 +1,6 @@
 import unittest
 import sys
+import re
 sys.path.append('..')
 
 from scraper import WIDTH, HEIGHT, Screen
@@ -47,12 +48,16 @@ class TestScraper(unittest.TestCase):
         sc.printstr('\x1b[4;0H') # Goto row 4, column 1
         sc.printstr('\x1b[K') # erase to the end of the line
         self.assertEquals(sc.getRow(4), ' ' * WIDTH)
+        sc.printstr('\x1b(B') # Set G0 charset
+        self.assertEquals(sc.G0, 'usascii')
+        sc.printstr('\x1b)0') # Set G1 charset
+        self.assertEquals(sc.G1, 'dec')
 
     def test_gotoHome(self):
         msg = "Hello World!"
         sc = Screen()
         sc.printstr(msg)
-        sc.gotoHome('[H')
+        sc.gotoHome(re.match(r'\[H', '[H'))
         self.assertEquals(sc.getCharAtRelativePos(), 'H')
 
     def test_clearScreen(self):
@@ -64,22 +69,22 @@ class TestScraper(unittest.TestCase):
 
     def test_gotoY (self):
         sc = Screen()
-        sc.gotoY('[7d')
+        sc.gotoY(re.match(r'\[(\d+)d', '[7d'))
         self.assertEquals(sc.cursorY, 6)
 
     def test_gotoXY (self):
         sc = Screen()
-        sc.gotoXY('[3;10H')
+        sc.gotoXY(re.match(r'\[(\d+);(\d+)H', '[3;10H'))
         self.assertEquals(sc.cursorY, 2)
         self.assertEquals(sc.cursorX, 9)
 
     def test_saveCursor_restoreCursor (self):
         sc = Screen()
-        sc.gotoXY('[3;10H')
+        sc.gotoXY(re.match(r'\[(\d+);(\d+)H', '[3;10H'))
         sc.saveCursor('')
         self.assertEquals(sc.savedCursorY, 2)
         self.assertEquals(sc.savedCursorX, 9)
-        sc.gotoXY('[11;30H')
+        sc.gotoXY(re.match(r'\[(\d+);(\d+)H', '[11;30H'))
         self.assertEquals(sc.cursorY, 10)
         self.assertEquals(sc.cursorX, 29)
         sc.restoreCursor('')
@@ -94,7 +99,7 @@ class TestScraper(unittest.TestCase):
 
     def test_cursorUp (self):
         sc = Screen()
-        sc.gotoXY('[3;10H')
+        sc.gotoXY(re.match(r'\[(\d+);(\d+)H', '[3;10H'))
         sc.cursorUp('[A')
         self.assertEquals(sc.cursorY, 1)
         self.assertEquals(sc.cursorX, 9)
@@ -106,6 +111,37 @@ class TestScraper(unittest.TestCase):
         sc.gotoHome('[H')
         sc.eraseToEndOfLine('[K')
         self.assertEquals(sc.getRow(0), ' ' * WIDTH)
+
+    def test_setCharset(self):
+        sc = Screen()
+        sc.setCharset(re.match(r'(\()(.)', '(B'))
+        self.assertEquals(sc.G0, 'usascii')
+        sc.setCharset(re.match(r'(\()(.)', '(0'))
+        self.assertEquals(sc.G0, 'dec')
+        sc.setCharset(re.match(r'(\))(.)', ')B'))
+        self.assertEquals(sc.G1, 'usascii')
+        sc.setCharset(re.match(r'(\))(.)', ')0'))
+        self.assertEquals(sc.G1, 'dec')
+
+    def test_setCharacterAtts(self):
+        sc = Screen()
+        sc.setCharacterAtts (re.match(r'\[(\d+)m', '[7m'))
+        self.assertEquals(sc.charAttInverse, True)
+        sc.setCharacterAtts (re.match(r'\[(\d+)m', '[32m'))
+        self.assertEquals(sc.charAttForeground, 2)
+        sc.setCharacterAtts (re.match(r'\[(\d+)m', '[1m'))
+        self.assertEquals(sc.charAttBold, True)
+        sc.resetCharAtts(re.match(r'\[m', '[m'))
+        self.assertEquals(sc.charAttBold, False)
+        self.assertEquals(sc.charAttInverse, False)
+        self.assertEquals(sc.charAttForeground, 9)
+
+    def test_ignored(self):
+        sc = Screen()
+        sc.printstr('\x1b[?1049h')
+        sc.printstr('\x1b[?1049l')
+        sc.printstr('\x1b[1049l')
+        
 
 if __name__ == "__main__":
     unittest.main()

@@ -67,26 +67,26 @@ class Screen(object):
         """ Generate XTerm's escape secuences.
             This dictionary can be safely cached.
         """
-        return {"( ": self.setCharset, # Set G0 character set
-                ") ": self.setCharset, # Set G1 character set
-                "[$d":self.gotoY, # Line position absolute
-                "[$;$H": self.gotoXY, # Goto position
-                "[1;24r": self.ignore, # Set scrolling size of Window (1, 24)
-                "[m": self.ignore, # Turn off character attributes
-                "[$l": self.ignore, # Reset mode
-                "[?$h": self.ignore, # Set DEC private mode
-                "[?$l": self.ignore, # Reset DEC private mode
-                "=": self.ignore, # Set Application Keypad
-                ">": self.ignore, # Set Normal Keypad
-                "[H": self.gotoHome, # Move cursor to upper left corner
-                "[2J": self.clearScreen, # Clear entire screen
-                "[K": self.eraseToEndOfLine,
-                "[A": self.cursorUp,
-                "[C": self.cursorRight,
-                "[$m": self.setCharacterAtts,
-                "[m": self.resetCharAtts,
-                "7": self.saveCursor, # Save cursor position and attributes
-                "8": self.restoreCursor # Restore cursor position and attributes
+        return {r'(\()(.)': self.setCharset, # Set G0 character set
+                r'(\))(.)': self.setCharset, # Set G1 character set
+                r'\[(\d+)d':self.gotoY, # Line position absolute
+                r'\[(\d+);(\d+)H': self.gotoXY, # Goto position
+                r"\[1;24r": self.ignore, # Set scrolling size of Window (1, 24)
+                r"\[m": self.ignore, # Turn off character attributes
+                r"\[\d+l": self.ignore, # Reset mode
+                r"\[\?\d+h": self.ignore, # Set DEC private mode
+                r"\[\?\d+l": self.ignore, # Reset DEC private mode
+                r"=": self.ignore, # Set Application Keypad
+                r">": self.ignore, # Set Normal Keypad
+                r"\[H": self.gotoHome, # Move cursor to upper left corner
+                r"\[2J": self.clearScreen, # Clear entire screen
+                r"\[K": self.eraseToEndOfLine,
+                r"\[A": self.cursorUp,
+                r"\[C": self.cursorRight,
+                r"\[(\d+)m": self.setCharacterAtts,
+                r"\[m": self.resetCharAtts,
+                r"7": self.saveCursor, # Save cursor position and attributes
+                r"8": self.restoreCursor # Restore cursor position and attributes
                }
 
     def dump(self):
@@ -104,21 +104,10 @@ class Screen(object):
                 index += 1
                 found = False
                 for seq in self.escape_sequences.keys():
-                    subidx = index
-                    seqidx = 0
-                    while seqidx < len(seq):
-                        if seq[seqidx] == '$' and cmd[subidx].isdigit():
-                            while cmd[subidx].isdigit():
-                                subidx += 1
-                            seqidx += 1
-                        elif seq[seqidx] == ' ' or seq[seqidx] == cmd[subidx]:
-                            seqidx += 1
-                            subidx += 1
-                        else:
-                            break
-                    if seqidx == len(seq):
-                        self.escape_sequences[seq](cmd[index:subidx])
-                        index = subidx
+                    match = re.match(seq, cmd[index:])
+                    if not match is None:
+                        self.escape_sequences[seq](match)
+                        index += len(match.group(0))
                         found = True
                         break
                 if not found:
@@ -190,30 +179,26 @@ class Screen(object):
 
     def gotoY (self, cmd):
         """ Internal auxiliary method.  You shouldn't need to invoke this """
-        val = self.parseInt (cmd, 1)
         #print "gotoY", val
-        self.cursorY = val - 1
+        self.cursorY = int(cmd.group(1)) - 1
 
     def gotoXY (self, cmd):
         """ Internal auxiliary method.  You shouldn't need to invoke this """
-        row = self.parseInt (cmd, 1)
-        col = self.parseInt (cmd, cmd.index(';') + 1)
-        #print "gotoXY", row, col
-        self.cursorY = row - 1
-        self.cursorX = col - 1
+        self.cursorY = int(cmd.group(1)) - 1
+        self.cursorX = int(cmd.group(2)) - 1
 
     def setCharset (self, cmd):
         """ Internal auxiliary method.  You shouldn't need to invoke this """
         charset = "default"
-        if cmd[1] == '0':
+        if cmd.group(2) == '0':
             charset = "dec"
-        elif cmd[1] == 'B':
+        elif cmd.group(2) == 'B':
             charset = "usascii"
         else:
             raise ValueError, "Unknown charset " + cmd
-        if cmd[0] == '(':
+        if cmd.group(1) == '(':
             self.G0 = charset
-        elif cmd[0] == ')':
+        elif cmd.group(1) == ')':
             self.G1 = charset
         else:
             raise ValueError, "Unknown charset " + cmd
@@ -251,7 +236,7 @@ class Screen(object):
 
     def setCharacterAtts (self, cmd):
         """ Internal auxiliary method.  You shouldn't need to invoke this """
-        val = self.parseInt (cmd, 1)
+        val = int(cmd.group(1))
         if val == 0:
             self.resetCharAtts (cmd)
         elif val == 1:
@@ -273,15 +258,6 @@ class Screen(object):
     def ignore (self, cmd):
         """ Internal auxiliary method.  You shouldn't need to invoke this """
         pass
-
-    def parseInt (self, cmd, startAt=0):
-        """ Internal auxiliary method.  You shouldn't need to invoke this """
-        idx = startAt + 1
-        val = int(cmd[startAt])
-        while cmd[idx].isdigit():
-            val = val * 10 + int(cmd[idx])
-            idx += 1
-        return val
 
     def getArea (self, x=0, y=0, w=WIDTH, h=HEIGHT):
         """ Retrieve a rectangular area of the screen """
