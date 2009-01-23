@@ -34,7 +34,7 @@ class NetHackPlayer(object):
     initialRace = "Random"
     initialGender = "Random"
     initialAlignment = "Random"
-    def __init__(self, server=None):
+    def __init__(self, server):
         self.pendingInteraction = None
         self.server = server
 
@@ -409,7 +409,7 @@ class NetHackPlayer(object):
         inventory = []
         while more_pages:
             matched = self.watch([r'\(end\) ', r'\(\d of \d\)'])
-            lines = self.server.screen.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
+            lines = self.server.getArea (self.server.cursorX() - len(matched), 0, h=self.server.cursorY())
             for line in lines:
                 if line.find(' - ') == -1:
                     category = line.strip()
@@ -431,7 +431,7 @@ class NetHackPlayer(object):
     def strength (self):
         """Returns my current strength.  For strength above 18 a floating point number is returned,
            as in 18/25 -> 18.25.  For 18/** return 19."""
-        statLine = self.server.screen.getRow(22, start=23)
+        statLine = self.server.getRow(22, start=23)
         st = statLine.find('St:') + 3
         if statLine[st:st+5] == '18/**': # Special case this one out
             return 19.0
@@ -440,94 +440,94 @@ class NetHackPlayer(object):
 
     def dexterity (self):
         """ Returns my current dexterity as an int """
-        statLine = self.server.screen.getRow(22, start=23)
+        statLine = self.server.getRow(22, start=23)
         dx = statLine.find('Dx:') + 3
         return int(statLine[dx : statLine.find (' ', dx + 1)])
 
     def constitution (self):
         """ Returns my current constitution as an int """
-        statLine = self.server.screen.getRow (22, start=23)
+        statLine = self.server.getRow (22, start=23)
         co = statLine.find('Co:') + 3
         return int(statLine[co : statLine.find (' ', co + 1)])
 
     def intelligence (self):
         """ Returns my current intelligence as an int """
-        statLine = self.server.screen.getRow (22, start=23)
+        statLine = self.server.getRow (22, start=23)
         val = statLine.find('In:') + 3
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def wisdom (self):
         """ Returns my current wisdom as an int """
-        statLine = self.server.screen.getRow (22, start=23)
+        statLine = self.server.getRow (22, start=23)
         wi = statLine.find('Wi:') + 3
         return int(statLine[wi : statLine.find (' ', wi + 1)])
 
     def charisma (self):
         """ Returns my current charisma as an int """
-        statLine = self.server.screen.getRow (22, start=23)
+        statLine = self.server.getRow (22, start=23)
         ch = statLine.find('Ch:') + 3
         return int(statLine[ch : statLine.find (' ', ch + 1)])
 
     def alignment (self):
         """ Returns my current alignment as a string: one of "Lawful", "Chaotic" or "Neutral" """
-        statLine = self.server.screen.getRow (22, start=60)
+        statLine = self.server.getRow (22, start=60)
         for align in keys.alignments.keys():
             if align in statLine:
                 return align
 
     def hitPoints (self):
         """ Returns my current hit-points as an int """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         hp = statLine.find ('HP:') + 3
         return int(statLine[hp : statLine.find ('(', hp + 1)])
 
     def maxHitPoints (self):
         """ Returns my current maximum hit-points as an int """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         hp = statLine.find ('HP:') + 3
         hp = statLine.find ('(', hp) + 1
         return int(statLine[hp : statLine.find (')', hp + 1)])
 
     def gold (self):
         """ Returns the amount of gold in my purse, as an int """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         val = statLine.find ('$:') + 2
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def dungeonLevel (self):
         """ Returns my current dungeon level as an int """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         val = statLine.find ('Dlvl:') + 5
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def power (self):
         """ Returns my current power as an int """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         val = statLine.find ('Pw:') + 3
         return int(statLine[val : statLine.find ('(', val + 1)])
 
     def maxPower (self):
         """ Returns my current maximum power as an int """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         val = statLine.find ('Pw:') + 3
         val = statLine.find ('(', val) + 1
         return int(statLine[val : statLine.find (')', val + 1)])
 
     def armourClass (self):
         """ Returns my current armour class as an int """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         val = statLine.find ('AC:') + 3
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def experienceLevel (self):
         """ Returns my current experience level as an int.  Compare with 'experience' """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         val = statLine.find ('Exp:') + 4
         return int(statLine[val : statLine.find ('/', val + 1)])
 
     def experience (self):
         """ Returns my current experience as an int. Compare with 'experienceLevel' """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         val = statLine.find ('Xp:')
         if val > -1:
             val = statLine.find ('/', val + 3) + 1
@@ -535,7 +535,7 @@ class NetHackPlayer(object):
 
     def turn (self):
         """ Returns the contents of the turn counter as an int """
-        statLine = self.server.screen.getRow (23)
+        statLine = self.server.getRow (23)
         val = statLine.find ('T:') + 2
         if val == 1: # find returned -1
             return -1
@@ -544,7 +544,7 @@ class NetHackPlayer(object):
     def hungerStatus (self):
         """ Returns my current hunger status as a string: one of "Satiated", "Not Hungry",
             "Hungry", "Weak", or "Fainting" """
-        statLine = self.server.screen.getRow (23, start=40)
+        statLine = self.server.getRow (23, start=40)
         for stat in ["Satitated", "Hungry", "Weak", "Fainting"]:
             if stat in statLine:
                 return stat
@@ -552,43 +552,43 @@ class NetHackPlayer(object):
 
     def confused (self):
         """ Returns True if I'm currently confused """
-        statLine = self.server.screen.getRow (23, start=50)
+        statLine = self.server.getRow (23, start=50)
         return "Conf" in statLine
 
     def stunned (self):
         """ Returns True if I'm currently stunned """
-        statLine = self.server.screen.getRow (23, start=50)
+        statLine = self.server.getRow (23, start=50)
         return "Stun" in statLine
 
     def foodPoisoned (self):
         """ Returns True if I'm currently food poisoned """
-        statLine = self.server.screen.getRow (23, start=50)
+        statLine = self.server.getRow (23, start=50)
         return "FoodPois" in statLine
 
     def ill (self):
         """ Returns True if I'm currently ill """
-        statLine = self.server.screen.getRow (23, start=50)
+        statLine = self.server.getRow (23, start=50)
         return "Ill" in statLine
 
     def blind (self):
         """ Returns True if I'm currently blind """
-        statLine = self.server.screen.getRow (23, start=50)
+        statLine = self.server.getRow (23, start=50)
         return "Blind" in statLine
 
     def hallucinating (self):
         """ Returns True if I'm currently hallucinating """
-        statLine = self.server.screen.getRow (23, start=50)
+        statLine = self.server.getRow (23, start=50)
         return "Hallu" in statLine
 
     def slimed (self):
         """ Returns True if I'm currently turning in to a slime """
-        statLine = self.server.screen.getRow (23, start=50)
+        statLine = self.server.getRow (23, start=50)
         return "Slime" in statLine
 
     def encumbrance (self):
         """ Returns my current encumbrance status as a string: one of "Unencumbered", "Burdened",
             "Stressed", "Strained", "Overtaxed" or "Overloaded" """
-        statLine = self.server.screen.getRow (23, start=50)
+        statLine = self.server.getRow (23, start=50)
         for stat in ["Burdened", "Stressed", "Strained", "Overtaxed", "Overloaded"]:
             if stat in statLine:
                 return stat
@@ -597,18 +597,19 @@ class NetHackPlayer(object):
     def x(self):
         """ Returns our current x-position (column) within the current dungeon level """
         checkPendingInteraction (self)
-        return self.server.screen.cursorX
+        return self.server.cursorX
 
     def y(self):
         """ Returns our current y-position (row) within the current dungeon level """
         checkPendingInteraction (self)
-        return self.server.screen.cursorY - 1 # There's one row of heading above the maze
+        return self.server.cursorY - 1 # There's one row of heading above the maze
 
     def look(self, x, y):
+        """ Look at what's currently visible at position (x,y) in the maze """
         checkPendingInteraction (self)
         if 0 > x or x >= 80 or 0 > y or y >= 21:
             raise ValueError, "Invalid cell position (%d,%d)" % (x, y)
-        return self.server.screen.screen[y + 1][x]
+        return self.server.cellAt(x, y + 1)
 
     def interact(self):
         """ Play for yourself for a while """
