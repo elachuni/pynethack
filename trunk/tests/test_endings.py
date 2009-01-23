@@ -2,9 +2,9 @@ import unittest
 import sys
 sys.path.append('..')
 
-from examples import Explorer, Barney
-from interactions import YesNoQuitInteraction
-from connection import LocalNetHackConnection
+from nethack.examples import Explorer, Barney
+from nethack.interactions import YesNoQuitInteraction
+from nethack.connection import LocalNetHackConnection
 
 class TestEndings(unittest.TestCase):
     def test_quit(self):
