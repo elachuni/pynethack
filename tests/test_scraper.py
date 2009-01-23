@@ -3,7 +3,7 @@ import sys
 import re
 sys.path.append('..')
 
-from scraper import WIDTH, HEIGHT, Screen
+from nethack.scraper import WIDTH, HEIGHT, Screen
 
 class TestScraper(unittest.TestCase):
     def test_init(self):
