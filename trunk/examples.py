@@ -102,8 +102,8 @@ class Explorer (NetHackPlayer):
 
     initialRole = 'Barbarian' # Good class for really dumb bots
 
-    def __init__ (self, user=None, passwd=None, host=None):
-        super (Explorer, self).__init__ (user, passwd, host)
+    def __init__ (self, server):
+        super (Explorer, self).__init__ (server)
         self.levelStuffs = {}
         dead = False
 

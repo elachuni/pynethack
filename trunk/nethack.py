@@ -19,13 +19,14 @@
 # Run against a local nethack game
 # or against a DGameLaunch server (ftp://ftp.alt.org/pub/dgamelaunch/)
 
-import pexpect
-from scraper import Screen
 import nethackkeys as keys
 import time
-import sys
-import os
-from interactions import checkPendingInteraction, YesNoInteraction, YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, DirectionInteraction, CursorPointInteraction, FreeEntryInteraction, Information
+
+from interactions import checkPendingInteraction, YesNoInteraction, \
+     YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, \
+     DirectionInteraction, CursorPointInteraction, FreeEntryInteraction, \
+     Information
+
 from items import Item, Spell
 
 class NetHackPlayer(object):
@@ -33,72 +34,19 @@ class NetHackPlayer(object):
     initialRace = "Random"
     initialGender = "Random"
     initialAlignment = "Random"
-    def __init__(self, user=None, passwd=None, host=None):
-        self.user = user
-        self.passwd = passwd
-        self.host = host
+    def __init__(self, server=None):
         self.pendingInteraction = None
-        self.info = None
-        self.history = []
-        self.echo = False
-        os.environ['LINES'] = '24'
-        os.environ['COLUMNS'] = '80'
-        os.environ['TERM'] = 'xterm'
-        if host is None:
-            userstr = (not user is None) and ('-u ' + user) or ''
-            self.child = pexpect.spawn ("nethack %s" % userstr)
-        else:
-            self.child = pexpect.spawn ("telnet %s" % host)
-        self.screen = Screen()
-        if not self.host is None:
-            self.login()
-
-    def __getstate__(self):
-        state = dict(self.__dict__)
-        del state['child']
-        return state
-
-    def __setstate__(self, state):
-        """ FIXME: __setstate__ duplicates constructor functionallity """
-        os.environ['LINES'] = '24'
-        os.environ['COLUMNS'] = '80'
-        os.environ['TERM'] = 'xterm'
-        self.__dict__ = state
-        if self.host is None:
-            userstr = (not self.user is None) and ('-u ' + self.user) or ''
-            self.child = pexpect.spawn ("nethack %s" % userstr)
-        else:
-            self.child = pexpect.spawn ("telnet %s" % self.host)
+        self.server = server
 
     def send (self, msg):
         """ Sends 'msg' down the wire. """
         checkPendingInteraction(self)
-        self.child.send (msg)
+        self.server.send (msg)
 
     def sendline (self, msg):
         """ Sends 'msg' down the wire followed by a newline character. """
         checkPendingInteraction(self)
-        self.child.sendline (msg)
-
-    def login(self):
-        """ Enter user/password credentials.
-            This is only needed when running against a remotely hosted server. """
-        self.watch ("=> ") # Welcome screen
-        opts = self.parseOptions (") ", 1, self.screen.cursorY - 6, 40, 4)
-        if opts.has_key ("login"):
-            self.send (opts['login']) # attempt log in
-        else:
-            raise ValueError, "login called, but we're not at the welcome screen"
-        self.watch ("=> ")
-        self.sendline (self.user)
-        self.watch ("=> ")
-        if self.screen.getRow (9).strip() == 'There was a problem with your last entry.':
-            raise ValueError, "invalid username"
-        self.sendline (self.passwd)
-        self.watch ("=> ")
-        opts = self.parseOptions (") ", 1, 13, 40, 6)
-        if opts.has_key ("play nethack!"):
-            self.send (opts['play nethack!']) # attempt to launch a new game
+        self.server.sendline (msg)
 
     def play(self):
         """ Start a new game and select role, race, gender and alignment """
@@ -127,92 +75,7 @@ class NetHackPlayer(object):
             'expecting' is a regex or list of regexes that are checked before regular interactions.
             'selectDialogQuestion' is a question for selectDialogs, that often show the question before
                                    the dialog. """
-        if isinstance(expecting, basestring):
-            expecting = [expecting]
-        patterns = ['--More--', pexpect.TIMEOUT, pexpect.EOF]
-        matched = None
-        found = False
-        info = []
-        self.info = None
-        while not found:
-            i = self.child.expect (patterns, timeout=0.3)
-            self.screen.printstr(self.child.before)
-            if not self.child.after in [pexpect.TIMEOUT, pexpect.EOF]:
-                self.screen.printstr(self.child.after)
-            if i == 0:
-                # --More--
-                if self.screen.cursorY == 0:
-                    msg = [self.screen.getRow(0, start=0, finish=self.screen.cursorX - 9).strip()]
-                elif self.screen.cursorY == 1:
-                    msg = [self.screen.getRow(0) +
-                           self.screen.getRow(1, start=0, finish=self.screen.cursorX - 9).strip()]
-                else:
-                    msg = self.screen.getArea(self.screen.cursorX - 9, 0, 80, self.screen.cursorY)
-                info += msg
-                self.send (' ')
-            elif i == 1:
-                # Timed out.
-                #  First: attempt to match what the user is expecting.
-                if not expecting is None:
-                    matched = self.screen.multiMatch(expecting)
-                    if not matched is None:
-                        found = True
-                if not found:
-                    if self.screen.matches (r'.* \[yn\]( \(.\))? ?'):
-                        matched = YesNoInteraction (self, self.screen.lastMatch())
-                        found = True
-                    elif self.screen.matches (r'.* \[ynq\]( \(.\))? ?'):
-                        matched = YesNoQuitInteraction (self, self.screen.lastMatch())
-                        found = True
-                    elif self.screen.matches (r'.* \[.* or \?\*\] '):
-                        matched = SelectInteraction (self, self.screen.lastMatch())
-                        found = True
-                    elif self.screen.matches (r'\(end\) |\(\d of\d\) '):
-                        matched = SelectDialogInteraction (self, question=selectDialogQuestion)
-                        found = True
-                    elif self.screen.matches (r'In what direction.*\?.*'):
-                        matched = DirectionInteraction (self, self.screen.lastMatch())
-                        found = True
-                    elif self.screen.cursorY == 0:
-                        # This can't be waiting for the player to move, we guess it's a free entry question
-                        matched = FreeEntryInteraction (self, self.screen.getRow(0).strip())
-                        found = True
-                    #elif... select position with cursor interaction
-                    #  Finally, assume the next turn is ready, and hand over control
-                    else:
-                        msg = self.screen.getRow(0).strip()
-                        if len(msg) > 0:
-                            info += [msg]
-                        found = True
-                #if matched is None:
-                    #print "Expecting", expecting
-                    #print "Found '%s'" % self.screen.getRow (
-                     #self.screen.cursorY, 0,
-                     #self.screen.cursorX)
-                    #print "Timed out with an unexpected output :-("
-                    #print "Cursor at %d,%d" % (self.screen.cursorY, self.screen.cursorX)
-                    #print "Output so far:", [self.child.before]
-                    #print "Expecting:", patterns
-                    #print "Happy hacking!"
-                    #raise ValueError, "Unexpected Output"
-            elif i == 2:
-                # Game finished
-                found = True
-            if self.echo:
-                self.screen.dump()
-        if len(info) > 0:
-            self.info = Information (self, info)
-            self.history.append(self.info)
-            if matched is None:
-                matched = self.info
-        return matched
-
-    def parseOptions (self, sep, x, y, w, h):
-        """ Parse an area of the screen as a list of options. Used for menus only for now """
-        lines = self.screen.getArea (x, y, w, h)
-        splits = [line.split(sep) for line in lines]
-        strips = [(opt[1].strip().lower(), opt[0].strip()) for opt in splits if len(opt) == 2]
-        return dict(strips)
+        return self.server.watch(self, expecting, selectDialogQuestion)
 
     def run (self):
         """ Redefine this method to give your bot a life! """
@@ -546,7 +409,7 @@ class NetHackPlayer(object):
         inventory = []
         while more_pages:
             matched = self.watch([r'\(end\) ', r'\(\d of \d\)'])
-            lines = self.screen.getArea (self.screen.cursorX - len(matched), 0, h=self.screen.cursorY)
+            lines = self.server.screen.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
             for line in lines:
                 if line.find(' - ') == -1:
                     category = line.strip()
@@ -568,7 +431,7 @@ class NetHackPlayer(object):
     def strength (self):
         """Returns my current strength.  For strength above 18 a floating point number is returned,
            as in 18/25 -> 18.25.  For 18/** return 19."""
-        statLine = self.screen.getRow(22, start=23)
+        statLine = self.server.screen.getRow(22, start=23)
         st = statLine.find('St:') + 3
         if statLine[st:st+5] == '18/**': # Special case this one out
             return 19.0
@@ -577,94 +440,94 @@ class NetHackPlayer(object):
 
     def dexterity (self):
         """ Returns my current dexterity as an int """
-        statLine = self.screen.getRow(22, start=23)
+        statLine = self.server.screen.getRow(22, start=23)
         dx = statLine.find('Dx:') + 3
         return int(statLine[dx : statLine.find (' ', dx + 1)])
 
     def constitution (self):
         """ Returns my current constitution as an int """
-        statLine = self.screen.getRow (22, start=23)
+        statLine = self.server.screen.getRow (22, start=23)
         co = statLine.find('Co:') + 3
         return int(statLine[co : statLine.find (' ', co + 1)])
 
     def intelligence (self):
         """ Returns my current intelligence as an int """
-        statLine = self.screen.getRow (22, start=23)
+        statLine = self.server.screen.getRow (22, start=23)
         val = statLine.find('In:') + 3
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def wisdom (self):
         """ Returns my current wisdom as an int """
-        statLine = self.screen.getRow (22, start=23)
+        statLine = self.server.screen.getRow (22, start=23)
         wi = statLine.find('Wi:') + 3
         return int(statLine[wi : statLine.find (' ', wi + 1)])
 
     def charisma (self):
         """ Returns my current charisma as an int """
-        statLine = self.screen.getRow (22, start=23)
+        statLine = self.server.screen.getRow (22, start=23)
         ch = statLine.find('Ch:') + 3
         return int(statLine[ch : statLine.find (' ', ch + 1)])
 
     def alignment (self):
         """ Returns my current alignment as a string: one of "Lawful", "Chaotic" or "Neutral" """
-        statLine = self.screen.getRow (22, start=60)
+        statLine = self.server.screen.getRow (22, start=60)
         for align in keys.alignments.keys():
             if align in statLine:
                 return align
 
     def hitPoints (self):
         """ Returns my current hit-points as an int """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         hp = statLine.find ('HP:') + 3
         return int(statLine[hp : statLine.find ('(', hp + 1)])
 
     def maxHitPoints (self):
         """ Returns my current maximum hit-points as an int """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         hp = statLine.find ('HP:') + 3
         hp = statLine.find ('(', hp) + 1
         return int(statLine[hp : statLine.find (')', hp + 1)])
 
     def gold (self):
         """ Returns the amount of gold in my purse, as an int """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         val = statLine.find ('$:') + 2
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def dungeonLevel (self):
         """ Returns my current dungeon level as an int """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         val = statLine.find ('Dlvl:') + 5
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def power (self):
         """ Returns my current power as an int """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         val = statLine.find ('Pw:') + 3
         return int(statLine[val : statLine.find ('(', val + 1)])
 
     def maxPower (self):
         """ Returns my current maximum power as an int """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         val = statLine.find ('Pw:') + 3
         val = statLine.find ('(', val) + 1
         return int(statLine[val : statLine.find (')', val + 1)])
 
     def armourClass (self):
         """ Returns my current armour class as an int """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         val = statLine.find ('AC:') + 3
         return int(statLine[val : statLine.find (' ', val + 1)])
 
     def experienceLevel (self):
         """ Returns my current experience level as an int.  Compare with 'experience' """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         val = statLine.find ('Exp:') + 4
         return int(statLine[val : statLine.find ('/', val + 1)])
 
     def experience (self):
         """ Returns my current experience as an int. Compare with 'experienceLevel' """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         val = statLine.find ('Xp:')
         if val > -1:
             val = statLine.find ('/', val + 3) + 1
@@ -672,7 +535,7 @@ class NetHackPlayer(object):
 
     def turn (self):
         """ Returns the contents of the turn counter as an int """
-        statLine = self.screen.getRow (23)
+        statLine = self.server.screen.getRow (23)
         val = statLine.find ('T:') + 2
         if val == 1: # find returned -1
             return -1
@@ -681,7 +544,7 @@ class NetHackPlayer(object):
     def hungerStatus (self):
         """ Returns my current hunger status as a string: one of "Satiated", "Not Hungry",
             "Hungry", "Weak", or "Fainting" """
-        statLine = self.screen.getRow (23, start=40)
+        statLine = self.server.screen.getRow (23, start=40)
         for stat in ["Satitated", "Hungry", "Weak", "Fainting"]:
             if stat in statLine:
                 return stat
@@ -689,43 +552,43 @@ class NetHackPlayer(object):
 
     def confused (self):
         """ Returns True if I'm currently confused """
-        statLine = self.screen.getRow (23, start=50)
+        statLine = self.server.screen.getRow (23, start=50)
         return "Conf" in statLine
 
     def stunned (self):
         """ Returns True if I'm currently stunned """
-        statLine = self.screen.getRow (23, start=50)
+        statLine = self.server.screen.getRow (23, start=50)
         return "Stun" in statLine
 
     def foodPoisoned (self):
         """ Returns True if I'm currently food poisoned """
-        statLine = self.screen.getRow (23, start=50)
+        statLine = self.server.screen.getRow (23, start=50)
         return "FoodPois" in statLine
 
     def ill (self):
         """ Returns True if I'm currently ill """
-        statLine = self.screen.getRow (23, start=50)
+        statLine = self.server.screen.getRow (23, start=50)
         return "Ill" in statLine
 
     def blind (self):
         """ Returns True if I'm currently blind """
-        statLine = self.screen.getRow (23, start=50)
+        statLine = self.server.screen.getRow (23, start=50)
         return "Blind" in statLine
 
     def hallucinating (self):
         """ Returns True if I'm currently hallucinating """
-        statLine = self.screen.getRow (23, start=50)
+        statLine = self.server.screen.getRow (23, start=50)
         return "Hallu" in statLine
 
     def slimed (self):
         """ Returns True if I'm currently turning in to a slime """
-        statLine = self.screen.getRow (23, start=50)
+        statLine = self.server.screen.getRow (23, start=50)
         return "Slime" in statLine
 
     def encumbrance (self):
         """ Returns my current encumbrance status as a string: one of "Unencumbered", "Burdened",
             "Stressed", "Strained", "Overtaxed" or "Overloaded" """
-        statLine = self.screen.getRow (23, start=50)
+        statLine = self.server.screen.getRow (23, start=50)
         for stat in ["Burdened", "Stressed", "Strained", "Overtaxed", "Overloaded"]:
             if stat in statLine:
                 return stat
@@ -734,24 +597,22 @@ class NetHackPlayer(object):
     def x(self):
         """ Returns our current x-position (column) within the current dungeon level """
         checkPendingInteraction (self)
-        return self.screen.cursorX
+        return self.server.screen.cursorX
 
     def y(self):
         """ Returns our current y-position (row) within the current dungeon level """
         checkPendingInteraction (self)
-        return self.screen.cursorY - 1 # There's one row of heading above the maze
+        return self.server.screen.cursorY - 1 # There's one row of heading above the maze
 
     def look(self, x, y):
         checkPendingInteraction (self)
         if 0 > x or x >= 80 or 0 > y or y >= 21:
             raise ValueError, "Invalid cell position (%d,%d)" % (x, y)
-        return self.screen.screen[y + 1][x]
+        return self.server.screen.screen[y + 1][x]
 
     def interact(self):
         """ Play for yourself for a while """
         checkPendingInteraction(self)
-        self.child.send (chr(18)) # CTRL+R to redraw screen
-        self.child.interact (escape_character=chr(1))
-        print "\n"*25
-        self.child.send (chr(18))
+        self.server.interact()
         return self.watch()
+
