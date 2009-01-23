@@ -4,9 +4,12 @@ sys.path.append('..')
 
 from examples import Explorer, Barney
 from interactions import YesNoQuitInteraction
+from connection import LocalNetHackConnection
+
 class TestEndings(unittest.TestCase):
     def test_quit(self):
-        np = Explorer()
+        conn = LocalNetHackConnection()
+        np = Explorer(conn)
         np.play()
         i = np.quit()
         while not isinstance(i, YesNoQuitInteraction):
@@ -14,12 +17,14 @@ class TestEndings(unittest.TestCase):
         i = i.answer('quit')
 
     def test_die(self):
-        np = Barney()
+        conn = LocalNetHackConnection()
+        np = Barney(conn)
         np.play()
         np.run()
 
     def test_save(self):
-        np = Explorer()
+        conn = LocalNetHackConnection()
+        np = Explorer(conn)
         np.play()
         i = np.save()
         

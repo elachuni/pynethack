@@ -158,15 +158,16 @@ class SelectDialogInteraction (Interaction):
         MultiSelect and SingleSelect dialogs aren't distinguishable at sight, so you need
         to tell me if I should treat this as a MultiSelect or a SingleSelect when you go to
         answer the question."""
-    def __init__ (self, player, question=None):
+    def __init__ (self, server, player, question=None):
         """ If question is None, I suppose it's on the first line of the screen. """
         Interaction.__init__(self, player, question)
+        self.server = server
         if question is None:
-            self.question = self.player.screen.getRow(0).strip()
-        matched = self.player.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
+            self.question = self.server.screen.getRow(0).strip()
+        matched = self.server.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
         if matched is None:
             raise ValueError, "No multiple selection dialog visible"
-        lines = self.player.screen.getArea (self.player.screen.cursorX - len(matched), 0, h=self.player.screen.cursorY)
+        lines = self.server.screen.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
         opts = []
         more_pages = True
         totalPages = 0
@@ -193,7 +194,7 @@ class SelectDialogInteraction (Interaction):
                     matched = self.player.watch(['\(end\) ', '\(\d of \d\) '])
                     if matched is None:
                         raise ValueError, "No multiple selection dialog visible"
-                    lines = self.player.screen.getArea (self.player.screen.cursorX - len(matched), 0, h=self.player.screen.cursorY)
+                    lines = self.server.screen.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
                 else:
                     more_pages = False
             else:
@@ -211,7 +212,7 @@ class SelectDialogInteraction (Interaction):
         checkPendingInteraction (self.player, self)
         self.player.pendingInteraction = None
         if isinstance (items, list):
-            match = self.player.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
+            match = self.server.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
             if match == '(end) ':
                 totalPages = 1
             else:
