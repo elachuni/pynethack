@@ -18,7 +18,7 @@
 # abstracts a connection to the game (local or remote).
 
 import pexpect
-from scraper import Screen
+from scraper import Screen, WIDTH, HEIGHT
 import os
 from interactions import YesNoInteraction, YesNoQuitInteraction, SelectInteraction, SelectDialogInteraction, DirectionInteraction, FreeEntryInteraction, Information
 
@@ -26,12 +26,14 @@ class NetHackConnection(object):
     """ Base class for Nethack connections.  Instantiating this class won't
         work, as we count on having a 'child' attribute.  Descendants should
         set this appropriately. """
-    def __init__(self):
+    def __init__(self, screen=None):
         os.environ['LINES'] = '24'
         os.environ['COLUMNS'] = '80'
         os.environ['TERM'] = 'xterm'
         self.echo = False
-        self.screen = Screen()
+        if screen is None:
+            screen = Screen()
+        self.screen = screen
         self.info = None
         self.history = []
 
@@ -134,6 +136,26 @@ class NetHackConnection(object):
                 matched = self.info
         return matched
 
+    def getArea (self, x=0, y=0, w=WIDTH, h=HEIGHT):
+        """ Retrieve a rectangular area of the screen """
+        return self.screen.getArea(x, y, w, h)
+
+    def getRow (self, row, start=0, finish=WIDTH):
+        """ Retrieve a row off the screen, or a substring of a row """
+        return self.screen.getRow(row, start, finish)
+
+    def cursorX (self):
+        """ Retrieves the current X position of the cursor """
+        return self.screen.cursorX
+
+    def cursorY (self):
+        """ Retrieves the current Y position of the cursor """
+        return self.screen.cursorY
+
+    def cellAt (self, x, y):
+        """ Returns the current contents of the Cell at position (x, y) """
+        return self.screen.screen[y][x]
+        
     def interact(self):
         self.child.send (chr(18)) # CTRL+R to redraw screen
         self.child.interact (escape_character=chr(1)) # CTRL+A leaves interactive mode
