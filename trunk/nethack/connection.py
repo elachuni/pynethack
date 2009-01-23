@@ -27,32 +27,24 @@ class NetHackConnection(object):
         work, as we count on having a 'child' attribute.  Descendants should
         set this appropriately. """
     def __init__(self, screen=None):
-        os.environ['LINES'] = '24'
-        os.environ['COLUMNS'] = '80'
-        os.environ['TERM'] = 'xterm'
         self.echo = False
         if screen is None:
             screen = Screen()
         self.screen = screen
         self.info = None
         self.history = []
+        self.child = None # The actual connection
+        self.patchEnvironment()
+
+    def patchEnvironment(self):
+        os.environ['LINES'] = '24'
+        os.environ['COLUMNS'] = '80'
+        os.environ['TERM'] = 'xterm'
 
     def __getstate__(self):
         state = dict(self.__dict__)
         del state['child']
         return state
-
-    def __setstate__(self, state):
-        """ FIXME: __setstate__ duplicates constructor functionallity """
-        os.environ['LINES'] = '24'
-        os.environ['COLUMNS'] = '80'
-        os.environ['TERM'] = 'xterm'
-        self.__dict__ = state
-        if self.host is None:
-            userstr = (not self.user is None) and ('-u ' + self.user) or ''
-            self.child = pexpect.spawn ("nethack %s" % userstr)
-        else:
-            self.child = pexpect.spawn ("telnet %s" % self.host)
 
     def send (self, msg):
         """ Sends 'msg' down the wire. """
@@ -169,6 +161,13 @@ class LocalNetHackConnection(NetHackConnection):
         userstr = (not username is None) and ('-u ' + username) or ''
         self.child = pexpect.spawn ("nethack %s" % userstr)
 
+    def __setstate__(self, state):
+        """ FIXME: __setstate__ duplicates constructor functionallity """
+        self.__dict__ = state
+        userstr = (not self.username is None) and ('-u ' + self.username) or ''
+        self.child = pexpect.spawn ("nethack %s" % userstr)
+        self.patchEnvironment()
+
 class RemoteNetHackConnection(NetHackConnection):
     def __init__(self, user=None, passwd=None, host=None):
         super (RemoteNetHackConnection, self).__init__()
@@ -177,6 +176,12 @@ class RemoteNetHackConnection(NetHackConnection):
         self.host = host
         self.child = pexpect.spawn ("telnet %s" % host)
         self.login()
+
+    def __setstate__(self, state):
+        """ FIXME: __setstate__ duplicates constructor functionallity """
+        self.__dict__ = state
+        self.child = pexpect.spawn ("telnet %s" % self.host)
+        self.patchEnvironment()
 
     def parseOptions (self, sep, x, y, w, h):
         """ Parse an area of the screen as a list of options. Used for parsing

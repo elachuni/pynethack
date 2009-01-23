@@ -597,12 +597,12 @@ class NetHackPlayer(object):
     def x(self):
         """ Returns our current x-position (column) within the current dungeon level """
         checkPendingInteraction (self)
-        return self.server.cursorX
+        return self.server.cursorX()
 
     def y(self):
         """ Returns our current y-position (row) within the current dungeon level """
         checkPendingInteraction (self)
-        return self.server.cursorY - 1 # There's one row of heading above the maze
+        return self.server.cursorY() - 1 # There's one row of heading above the maze
 
     def look(self, x, y):
         """ Look at what's currently visible at position (x,y) in the maze """
