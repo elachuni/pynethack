@@ -1,0 +1,52 @@
+23 9
+ Put in what?
+ 
+ Weapons
+ a - a blessed +1 quarterstaff (weapon in hands)
+ Armor
+ b - an uncursed +0 cloak of magic resistance (being worn)
+ Scrolls
+ i - an uncursed scroll of genocide
+ j - an uncursed scroll of remove curse
+ k - an uncursed scroll of magic mapping
+ o - a scroll labeled ANDOVA BEGARIN
+ p - a scroll labeled XIXAXA XOXAXA XUXAXA
+ Spellbooks
+ l - a blessed spellbook of force bolt
+ m - an uncursed spellbook of wizard lock
+ Potions
+ f - an uncursed potion of blindness
+ g - an uncursed potion of extra healing
+ h - a blessed potion of fruit juice
+ Rings
+ d - an uncursed +1 ring of gain strength
+ e - an uncursed ring of warning
+ Wands
+ (1 of 2)
+3 9
+ c - a wand of create monster (0:14)
+ Tools
+ n - a magic marker (0:47)
+ (2 of 2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

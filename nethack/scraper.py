@@ -285,18 +285,15 @@ class Screen(object):
         toMatch = self.getRow (self.cursorY, finish=self.cursorX)
         if not pattern.endswith('$'):
             pattern = pattern + '$'
-        regex = re.search (pattern, toMatch)
-        if not regex is None:
-            self._last_match = regex.group(0)
+        match = re.search (pattern, toMatch)
+        if not match is None:
+            self._last_match = match
         return not self._last_match is None
 
     def lastMatch (self):
         """ Returns last match found by 'matches'.  Returns the exact string
             that matched, not the pattern """
-        if hasattr(self, '_last_match'):
-            return self._last_match
-        else:
-            return None
+        return getattr(self, '_last_match', None)
 
     def multiMatch (self, patterns):
         """ Returns the string that appears before the cursor that matches some

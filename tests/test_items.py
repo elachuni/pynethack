@@ -16,12 +16,16 @@ class TestBasicFunctions (unittest.TestCase):
     def testWielded(self):
         inv = self.np.inventory()
         self.assertTrue(inv['a'].wielded())
-    def testBUC(self):
+    def testBCU(self):
         inv = self.np.inventory()
-        self.assertEquals('blessed', inv['a'].buc())
-        self.assertEquals('uncursed', inv['b'].buc())
-        self.assertEquals('unknown', inv['c'].buc())
+        self.assertEquals('blessed', inv['a'].bcu())
+        self.assertEquals('uncursed', inv['b'].bcu())
+        self.assertEquals('unknown', inv['c'].bcu())
 
+def suite():
+    suite = unittest.TestSuite()
+    suite.addTest(unittest.makeSuite(TestBasicFunctions))
+    return suite
 
 if __name__ == '__main__':
     unittest.main()

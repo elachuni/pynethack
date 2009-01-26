@@ -1,3 +1,4 @@
+0 50
 Do you want your possessions identified? [ynq] (n) 
 
 

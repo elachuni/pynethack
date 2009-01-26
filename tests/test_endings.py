@@ -28,6 +28,11 @@ class TestEndings(unittest.TestCase):
         np.play()
         i = np.save()
         
+def suite():
+    suite = unittest.TestSuite()
+    suite.addTest(unittest.makeSuite(TestEndings))
+    return suite
+
 if __name__ == '__main__':
     unittest.main()
 

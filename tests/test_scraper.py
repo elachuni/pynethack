@@ -141,7 +141,16 @@ class TestScraper(unittest.TestCase):
         sc.printstr('\x1b[?1049h')
         sc.printstr('\x1b[?1049l')
         sc.printstr('\x1b[1049l')
-        
+
+    def test_matchMultiSelectMarker (self):
+        sc = Screen()
+        sc.printstr('\x1b[24;1H (1 of 2) ')
+        self.assertTrue (sc.matches (r'\(end\) |\(\d of \d\) '))
+
+def suite():
+    suite = unittest.TestSuite()
+    suite.addTest(unittest.makeSuite(TestScraper))
+    return suite
 
 if __name__ == "__main__":
     unittest.main()

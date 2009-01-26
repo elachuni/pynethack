@@ -15,8 +15,8 @@ class Item (object):
         return '(weapon in hands)' in self.description
     def rusty(self):
         return 'rusty' in self.description
-    def buc(self):
-        """ Return the blessed/uncursed/cursed status """
+    def bcu(self):
+        """ Return the Blessed/Cursed/Uncursed status """
         for stat in ['blessed', 'uncursed', 'cursed']:
             if stat in self.description:
                 return stat

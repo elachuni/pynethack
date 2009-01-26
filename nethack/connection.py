@@ -92,19 +92,19 @@ class NetHackConnection(object):
                         found = True
                 if not found:
                     if self.screen.matches (r'.* \[yn\]( \(.\))? ?'):
-                        matched = YesNoInteraction (self, self.screen.lastMatch())
+                        matched = YesNoInteraction (self, self.screen.lastMatch().group(0))
                         found = True
                     elif self.screen.matches (r'.* \[ynq\]( \(.\))? ?'):
-                        matched = YesNoQuitInteraction (self, self.screen.lastMatch())
+                        matched = YesNoQuitInteraction (self, self.screen.lastMatch().group(0))
                         found = True
                     elif self.screen.matches (r'.* \[.* or \?\*\] '):
-                        matched = SelectInteraction (self, self.screen.lastMatch())
+                        matched = SelectInteraction (self, self.screen.lastMatch().group(0))
                         found = True
-                    elif self.screen.matches (r'\(end\) |\(\d of\d\) '):
+                    elif self.screen.matches (r'\(end\) |\(\d of \d\)'):
                         matched = SelectDialogInteraction (self, question=selectDialogQuestion)
                         found = True
                     elif self.screen.matches (r'In what direction.*\?.*'):
-                        matched = DirectionInteraction (self, self.screen.lastMatch())
+                        matched = DirectionInteraction (self, self.screen.lastMatch().group(0))
                         found = True
                     elif self.screen.cursorY == 0:
                         # This can't be waiting for the player to move, we guess it's a free entry question
@@ -164,10 +164,10 @@ class LocalNetHackConnection(NetHackConnection):
 
     def __setstate__(self, state):
         """ FIXME: __setstate__ duplicates constructor functionallity """
+        self.patchEnvironment()
         self.__dict__ = state
         userstr = (not self.username is None) and ('-u ' + self.username) or ''
         self.child = pexpect.spawn ("nethack %s" % userstr)
-        self.patchEnvironment()
 
 class RemoteNetHackConnection(NetHackConnection):
     def __init__(self, user=None, passwd=None, host=None):
@@ -180,9 +180,9 @@ class RemoteNetHackConnection(NetHackConnection):
 
     def __setstate__(self, state):
         """ FIXME: __setstate__ duplicates constructor functionallity """
+        self.patchEnvironment()
         self.__dict__ = state
         self.child = pexpect.spawn ("telnet %s" % self.host)
-        self.patchEnvironment()
 
     def parseOptions (self, sep, x, y, w, h):
         """ Parse an area of the screen as a list of options. Used for parsing

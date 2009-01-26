@@ -330,22 +330,52 @@ class NetHackPlayer(object):
                 matched = matched.answer (msg)
         return matched
 
-    def apply(self, item=Item('*')):
+    def apply(self, item=None):
         """ Use or apply an item.
             If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        if item is None:
+            item = Item('*')
         self.send ('a')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'use or apply' in matched.question:
             matched = matched.answer (item)
         return matched
 
-    def remove (self, item=Item('*')):
+    def remove (self, item=None):
         """ Remove an accessory.
             If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        if item is None:
+            item = Item('*')
         self.send ('R')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'remove' in matched.question:
             matched = matched.answer (item)
+        return matched
+
+    def loot (self, takeOut=True):
+        """ Loot a box or container.
+            By default we'll try to take stuff out of the box.  To put stuff
+                into the box, set takeOut=False
+            At this moment you can't do both (take out and put in) at the same
+                time, you'll need to call loot() twice to do that.
+            Returns a SelectDialogInteraction if everything goes ok. """
+        self.sendline ('#loot')
+        matched = self.watch()
+        if isinstance (matched, YesNoQuitInteraction) and 'loot it' in matched.question:
+            matched = matched.answer ('y')
+        if isinstance (matched, SelectDialogInteraction) and 'Do what?' in matched.question:
+            if takeOut:
+                answer = 'Take something out'
+            else:
+                answer = 'Put something in'
+            for ans in matched.options:
+                if answer in ans.description:
+                    matched = matched.answer(ans)
+                    break
+            else:
+                matched = matched.answerDefault()
+            if isinstance(matched, SelectDialogInteraction) and 'what type of objects?' in matched.question:
+                matched = matched.answer([matched.options[0]]) # All types
         return matched
 
     def zap (self, item=Item('*')):
@@ -384,6 +414,13 @@ class NetHackPlayer(object):
             matched = matched.answer (x, y)
         return matched
 
+    def look(self, x, y):
+        """ Look at what's currently visible at position (x,y) in the maze """
+        checkPendingInteraction (self.server)
+        if 0 > x or x >= 80 or 0 > y or y >= 21:
+            raise ValueError, "Invalid cell position (%d,%d)" % (x, y)
+        return self.server.cellAt(x, y + 1)
+
     def save(self):
         """ Save this game and exit """
         self.send ('S')
@@ -408,7 +445,7 @@ class NetHackPlayer(object):
         inventory = []
         while more_pages:
             matched = self.watch([r'\(end\) ', r'\(\d of \d\)'])
-            lines = self.server.getArea (self.server.cursorX() - len(matched), 0, h=self.server.cursorY())
+            lines = self.server.getArea (self.server.cursorX() - len(matched.group(0)), 0, h=self.server.cursorY())
             for line in lines:
                 if line.find(' - ') == -1:
                     category = line.strip()
@@ -417,7 +454,7 @@ class NetHackPlayer(object):
                     it = Item (key.strip(), description=item.strip(), category=category)
                     inventory.append(it)
             self.send (' ')
-            if matched != '(1 of 2)':
+            if matched.group(0) != '(1 of 2)':
                 more_pages = False
         self.watch()
         if isinstance (categories, basestring):
@@ -602,13 +639,6 @@ class NetHackPlayer(object):
         """ Returns our current y-position (row) within the current dungeon level """
         checkPendingInteraction (self.server)
         return self.server.cursorY() - 1 # There's one row of heading above the maze
-
-    def look(self, x, y):
-        """ Look at what's currently visible at position (x,y) in the maze """
-        checkPendingInteraction (self.server)
-        if 0 > x or x >= 80 or 0 > y or y >= 21:
-            raise ValueError, "Invalid cell position (%d,%d)" % (x, y)
-        return self.server.cellAt(x, y + 1)
 
     def interact(self):
         """ Play for yourself for a while """
