@@ -9,6 +9,8 @@ class TestBasicFunctions (unittest.TestCase):
         self.np = unserialize('scenarios/basic.nh')
         self.np.server.echo = False
     def tearDown(self):
+        if self.np.server.pendingInteraction:
+            self.np.server.pendingInteraction.answerDefault()
         self.np.quit()
     def testAttrs(self):
         self.assertEquals(9, self.np.strength())
@@ -45,8 +47,33 @@ class TestBasicFunctions (unittest.TestCase):
         self.np.pickUp()
         self.assertEquals('Burdened', self.np.encumbrance())
 
-#    def testInventory(self):
-#        inv = self.np.inventory()
+    def testInventory(self):
+        inv = self.np.inventory()
+        self.assertEquals(14, len(inv))
+        self.np.go('W')
+        self.np.go('W')
+        m = self.np.loot()
+        m = m.answer(m.options)
+        inv = self.np.inventory()
+        self.assertEquals(16, len(inv))
+
+    def testLoot(self):
+        self.np.go('W')
+        self.np.go('W')
+        m = self.np.loot()
+        m = m.answer(m.options)
+        m = self.np.loot()
+        m = self.np.loot(takeOut=False)
+        self.assertEquals(16, len(m.options))
+        m.answer(m.options[-4:])
+        m = self.np.loot()
+        self.assertEquals(4, len(m.options))
+        m.answerDefault()
+
+def suite():
+    suite = unittest.TestSuite()
+    suite.addTest(unittest.makeSuite(TestBasicFunctions))
+    return suite
 
 if __name__ == '__main__':
     unittest.main()

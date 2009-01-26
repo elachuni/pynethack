@@ -158,16 +158,17 @@ class SelectDialogInteraction (Interaction):
         MultiSelect and SingleSelect dialogs aren't distinguishable at sight, so you need
         to tell me if I should treat this as a MultiSelect or a SingleSelect when you go to
         answer the question."""
+    patterns = ['\(end\) ', '\((?P<M>\d) of (?P<N>\d)\)']
     def __init__ (self, server, question=None):
         """ If question is None, I suppose it's on the first line of the screen. """
         Interaction.__init__(self, server, question)
         self.server = server
         if question is None:
             self.question = self.server.getRow(0).strip()
-        matched = self.server.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
+        matched = self.server.screen.multiMatch (self.patterns)
         if matched is None:
-            raise ValueError, "No multiple selection dialog visible"
-        lines = self.server.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
+            raise ValueError, "No selection dialog visible"
+        lines = self.server.getArea (self.server.screen.cursorX - len(matched.group(0)), 0, h=self.server.screen.cursorY)
         opts = []
         more_pages = True
         totalPages = 0
@@ -186,23 +187,23 @@ class SelectDialogInteraction (Interaction):
                     else:
                         it = Item(key.strip(), description=item.strip(), category=category)
                     opts.append(it)
-            if matched != '(end) ':
-                currentPage, totalPages = self.parseMOfN (matched)
-                print "Page", currentPage, "of", totalPages
+            if matched.group(0) != '(end) ':
+                currentPage = int(matched.group('M'))
+                totalPages = int(matched.group('N'))
                 if currentPage < totalPages:
                     self.server.send ('>')
-                    matched = self.server.watch(['\(end\) ', '\(\d of \d\) '])
+                    matched = self.server.watch(self.patterns)
                     if matched is None:
                         raise ValueError, "No multiple selection dialog visible"
-                    lines = self.screen.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
+                    lines = self.server.screen.getArea (self.server.screen.cursorX - len(matched.group(0)), 0, h=self.server.screen.cursorY)
                 else:
                     more_pages = False
             else:
                 more_pages = False
         # Return to the first page
         for i in range(totalPages - 1):
-            self.send ('<')
-            self.server.watch (['\(end\) ', '\(\d of \d\) '])
+            self.server.send ('<')
+            self.server.watch (self.patterns)
         self.options = opts
 
     def answer (self, items):
@@ -212,11 +213,12 @@ class SelectDialogInteraction (Interaction):
         checkPendingInteraction (self.server, self)
         self.server.pendingInteraction = None
         if isinstance (items, list):
-            match = self.server.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
-            if match == '(end) ':
+            match = self.server.screen.multiMatch (self.patterns)
+            if match.group(0) == '(end) ':
                 totalPages = 1
             else:
-                currentPage, totalPages = self.parseMOfN(match)
+                currentPage = int(match.group('M'))
+                totalPages = int(match.group('N'))
                 if currentPage != 1:
                     raise ValueError, "I shouldn't be asked to answer an interaction when not on the first page of a dialog."
             for page in range(totalPages):
