@@ -36,8 +36,8 @@ class Barney (NetHackPlayer):
     def run(self):
         done = False
         while not done:
-            if self.pendingInteraction is not None:
-                p = self.pendingInteraction
+            if self.server.pendingInteraction is not None:
+                p = self.server.pendingInteraction
                 if isinstance(p, YesNoInteraction):
                     if p.question == 'Stop eating?':
                         p.answer('no')
@@ -48,15 +48,15 @@ class Barney (NetHackPlayer):
                     done = True
                     continue
             goodies = self.inventory(categories=['Potions', 'Comestibles'])
-            if len(goodies) == 0:
-                self.sit()
-                done = True
-            else:
-                item = goodies[0]
+            for item in goodies.values():
                 if item.category == 'Comestibles':
                     self.eat(item)
                 else:
                     self.quaff(item)
+                break
+            else:
+                self.sit()
+                done = True
 
 class Introspective (NetHackPlayer):
     """ I just print out all my stats and exit """
