@@ -9,6 +9,18 @@ class Item (object):
         if not self.description is None:
             description = self.description
         return '<%s %s>' % (self.__class__.__name__, description)
+    def beingWorn(self):
+        return '(being worn)' in self.description
+    def wielded(self):
+        return '(weapon in hands)' in self.description
+    def rusty(self):
+        return 'rusty' in self.description
+    def buc(self):
+        """ Return the blessed/uncursed/cursed status """
+        for stat in ['blessed', 'uncursed', 'cursed']:
+            if stat in self.description:
+                return stat
+        return 'unknown'
 
 class Spell (object):
     def __init__ (self, key, description=None, headings=None):

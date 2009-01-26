@@ -34,6 +34,7 @@ class NetHackConnection(object):
         self.info = None
         self.history = []
         self.child = None # The actual connection
+        self.pendingInteraction = None
         self.patchEnvironment()
 
     def patchEnvironment(self):
@@ -54,7 +55,7 @@ class NetHackConnection(object):
         """ Sends 'msg' down the wire followed by a newline character. """
         self.child.sendline (msg)
 
-    def watch (self, player, expecting=None, selectDialogQuestion=None):
+    def watch (self, expecting=None, selectDialogQuestion=None):
         """ Update the screen and see what happens.
             'expecting' is a regex or list of regexes that are checked before regular interactions.
             'selectDialogQuestion' is a question for selectDialogs, that often show the question before
@@ -91,23 +92,23 @@ class NetHackConnection(object):
                         found = True
                 if not found:
                     if self.screen.matches (r'.* \[yn\]( \(.\))? ?'):
-                        matched = YesNoInteraction (player, self.screen.lastMatch())
+                        matched = YesNoInteraction (self, self.screen.lastMatch())
                         found = True
                     elif self.screen.matches (r'.* \[ynq\]( \(.\))? ?'):
-                        matched = YesNoQuitInteraction (player, self.screen.lastMatch())
+                        matched = YesNoQuitInteraction (self, self.screen.lastMatch())
                         found = True
                     elif self.screen.matches (r'.* \[.* or \?\*\] '):
-                        matched = SelectInteraction (player, self.screen.lastMatch())
+                        matched = SelectInteraction (self, self.screen.lastMatch())
                         found = True
                     elif self.screen.matches (r'\(end\) |\(\d of\d\) '):
-                        matched = SelectDialogInteraction (self, player, question=selectDialogQuestion)
+                        matched = SelectDialogInteraction (self, question=selectDialogQuestion)
                         found = True
                     elif self.screen.matches (r'In what direction.*\?.*'):
-                        matched = DirectionInteraction (player, self.screen.lastMatch())
+                        matched = DirectionInteraction (self, self.screen.lastMatch())
                         found = True
                     elif self.screen.cursorY == 0:
                         # This can't be waiting for the player to move, we guess it's a free entry question
-                        matched = FreeEntryInteraction (player, self.screen.getRow(0).strip())
+                        matched = FreeEntryInteraction (self, self.screen.getRow(0).strip())
                         found = True
                     #elif... select position with cursor interaction
                     #  Finally, assume the next turn is ready, and hand over control

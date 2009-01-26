@@ -35,22 +35,21 @@ class NetHackPlayer(object):
     initialGender = "Random"
     initialAlignment = "Random"
     def __init__(self, server):
-        self.pendingInteraction = None
         self.server = server
 
     def send (self, msg):
         """ Sends 'msg' down the wire. """
-        checkPendingInteraction(self)
+        checkPendingInteraction(self.server)
         self.server.send (msg)
 
     def sendline (self, msg):
         """ Sends 'msg' down the wire followed by a newline character. """
-        checkPendingInteraction(self)
+        checkPendingInteraction(self.server)
         self.server.sendline (msg)
 
     def play(self):
         """ Start a new game and select role, race, gender and alignment """
-        checkPendingInteraction(self)
+        checkPendingInteraction(self.server)
         match = self.watch (r'in 1')
         if match == 'in 1':
             print "Waiting 10 seconds for old save game to be restored...\n"
@@ -75,7 +74,7 @@ class NetHackPlayer(object):
             'expecting' is a regex or list of regexes that are checked before regular interactions.
             'selectDialogQuestion' is a question for selectDialogs, that often show the question before
                                    the dialog. """
-        return self.server.watch(self, expecting, selectDialogQuestion)
+        return self.server.watch(expecting, selectDialogQuestion)
 
     def run (self):
         """ Redefine this method to give your bot a life! """
@@ -372,7 +371,7 @@ class NetHackPlayer(object):
         self.send (";")
         matched = self.watch ()
         if isinstance (matched, Information) and matched.message == ['Pick an object.']:
-            matched = CursorPointInteraction (self, matched.message)
+            matched = CursorPointInteraction (self.server, matched.message)
             matched = matched.answer (x, y)
         return matched
 
@@ -381,7 +380,7 @@ class NetHackPlayer(object):
         self.send ("_")
         matched = self.watch ()
         if isinstance (matched, Information) and '(For instructions type a ?)' in matched.message[0]:
-            matched = CursorPointInteraction (self, matched.message)
+            matched = CursorPointInteraction (self.server, matched.message)
             matched = matched.answer (x, y)
         return matched
 
@@ -424,9 +423,9 @@ class NetHackPlayer(object):
         if isinstance (categories, basestring):
             categories = [categories]
         if categories is None:
-            return inventory
+            return dict((item.key, item) for item in inventory)
         else:
-            return [item for item in inventory if item.category in categories]
+            return dict((item.key, item) for item in inventory if item.category in categories)
 
     def strength (self):
         """Returns my current strength.  For strength above 18 a floating point number is returned,
@@ -588,32 +587,32 @@ class NetHackPlayer(object):
     def encumbrance (self):
         """ Returns my current encumbrance status as a string: one of "Unencumbered", "Burdened",
             "Stressed", "Strained", "Overtaxed" or "Overloaded" """
-        statLine = self.server.getRow (23, start=50)
+        statLine = self.server.getRow (23, start=40)
         for stat in ["Burdened", "Stressed", "Strained", "Overtaxed", "Overloaded"]:
             if stat in statLine:
                 return stat
-        return "Unemcumbered"
+        return "Unencumbered"
 
     def x(self):
         """ Returns our current x-position (column) within the current dungeon level """
-        checkPendingInteraction (self)
+        checkPendingInteraction (self.server)
         return self.server.cursorX()
 
     def y(self):
         """ Returns our current y-position (row) within the current dungeon level """
-        checkPendingInteraction (self)
+        checkPendingInteraction (self.server)
         return self.server.cursorY() - 1 # There's one row of heading above the maze
 
     def look(self, x, y):
         """ Look at what's currently visible at position (x,y) in the maze """
-        checkPendingInteraction (self)
+        checkPendingInteraction (self.server)
         if 0 > x or x >= 80 or 0 > y or y >= 21:
             raise ValueError, "Invalid cell position (%d,%d)" % (x, y)
         return self.server.cellAt(x, y + 1)
 
     def interact(self):
         """ Play for yourself for a while """
-        checkPendingInteraction(self)
+        checkPendingInteraction(self.server)
         self.server.interact()
         return self.watch()
 

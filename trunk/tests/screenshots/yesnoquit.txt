@@ -1,0 +1,25 @@
+Do you want your possessions identified? [ynq] (n) 
+
+
+
+
+
+
+
+
+
+
+
+
+                                        #
+                                     ####
+                                     #------+---
+                                     @|........|
+                                     #.........|
+                                      |...)..$..
+                                      |.....<..|
+                                      ----------
+
+Anthony the Plunderer      St:18/03 Dx:16 Co:18 In:6 Wi:6 Ch:6  Chaotic
+Dlvl:2  $:0  HP:5(5)
+

@@ -14,12 +14,12 @@ class InteractionNotPending (Exception):
     def __str__(self):
         return repr(self.interaction.question)
 
-def checkPendingInteraction (player, interaction=None):
-    """ Check that a NetHackPlayer's pending interaction is what is should be.
+def checkPendingInteraction (server, interaction=None):
+    """ Check that a NetHackConnection's pending interaction is what is should be.
         Raises an exception otherwise. """
-    if interaction is None and not player.pendingInteraction is None:
-        raise PendingInteraction (player.pendingInteraction)
-    elif player.pendingInteraction != interaction:
+    if interaction is None and not server.pendingInteraction is None:
+        raise PendingInteraction (server.pendingInteraction)
+    elif server.pendingInteraction != interaction:
         raise InteractionNotPending (interaction)
 
 class Interaction (object):
@@ -27,37 +27,37 @@ class Interaction (object):
         NetHackPlayer's methods return an Interaction when they need further input from the player
         to complete. """
     defaultAnswer = None
-    def __init__ (self, player, question):
-        checkPendingInteraction (player)
-        self.player = player
+    def __init__ (self, server, question):
+        checkPendingInteraction (server)
+        self.server = server
         self.question = question
-        player.pendingInteraction = self
+        server.pendingInteraction = self
     def answer (self, ans):
-        checkPendingInteraction (self.player, self)
-        self.player.pendingInteraction = None
-        self.player.send (ans)
-        return self.player.watch()
+        checkPendingInteraction (self.server, self)
+        self.server.pendingInteraction = None
+        self.server.send (ans)
+        return self.server.watch()
     def answerDefault (self):
-        checkPendingInteraction (self.player, self)
-        self.player.pendingInteraction = None
-        self.player.send ('\x1b')
-        return self.player.watch()
+        checkPendingInteraction (self.server, self)
+        self.server.pendingInteraction = None
+        self.server.send ('\x1b')
+        return self.server.watch()
     def __str__ (self):
         return '<%s %s>' % (self.__class__.__name__, self.question)
 
 class Information (object):
     """ I describe a bit of information the game reports.
         Unlike an interaction, I don't require an answer and can be discarded imediately"""
-    def __init__ (self, player, message):
-        #checkPendingInteraction (player)
+    def __init__ (self, server, message):
+        #checkPendingInteraction (server)
         self.message = message
     def __str__ (self):
         return '\n'.join(self.message)
 
 class DirectionInteraction (Interaction):
-    """ The player should choose a direction here """
-    def __init__ (self, player, question):
-        super (DirectionInteraction, self).__init__ (player, question)
+    """ The server should choose a direction here """
+    def __init__ (self, server, question):
+        super (DirectionInteraction, self).__init__ (server, question)
         match = re.match (r'(?P<question>.*) \[(?P<opts>.*)\] ', question)
         if match is None:
             self.options = keys.dirs.keys()
@@ -71,8 +71,8 @@ class DirectionInteraction (Interaction):
 class YesNoInteraction (Interaction):
     """ I describe a yes/no question """
     __opts = {'yes': 'y', 'y': 'y', 'no': 'n', 'n': 'n'}
-    def __init__ (self, player, question):
-        super (YesNoInteraction, self).__init__(player, question)
+    def __init__ (self, server, question):
+        super (YesNoInteraction, self).__init__(server, question)
         # Attempt to parse question in to question and default answer:
         match = re.match (r'(?P<question>.*) \[yn\]( \((?P<def>.)\))?', question)
         if not match is None:
@@ -90,31 +90,31 @@ class YesNoInteraction (Interaction):
 class CursorPointInteraction (Interaction):
     """ I'm an interaction that requests the user to select a position in the maze using the cursor. """
     def answer (self, x, y):
-        checkPendingInteraction (self.player, self)
-        self.player.pendingInteraction = None
-        currentX = self.player.x()
-        currentY = self.player.y()
+        checkPendingInteraction (self.server, self)
+        self.server.pendingInteraction = None
+        currentX = self.server.x()
+        currentY = self.server.y()
         while x > currentX:
-            self.player.send ('l')
+            self.server.send ('l')
             currentX += 1
         while x < currentX:
-            self.player.send ('h')
+            self.server.send ('h')
             currentX -= 1
         while y < currentY:
-            self.player.send ('k')
+            self.server.send ('k')
             currentY -= 1
         while y > currentY:
-            self.player.send ('j')
+            self.server.send ('j')
             currentY += 1
-        self.player.send ('.')
-        return self.player.watch()
+        self.server.send ('.')
+        return self.server.watch()
 
 class YesNoQuitInteraction (Interaction):
     """ I describe a yes/no/quit question. """
     __opts = {'yes': 'y', 'y': 'y', 'no': 'n', 'n': 'n', 'quit': 'q', 'q': 'q'}
     defaultAnswer = 'q'
-    def __init__ (self, player, question):
-        super (YesNoQuitInteraction, self).__init__(player, question)
+    def __init__ (self, server, question):
+        super (YesNoQuitInteraction, self).__init__(server, question)
         # Attempt to parse question in to question and default answer:
         match = re.match (r'(?P<question>.*) \[ynq\]( \((?P<def>.)\))?', question)
         if not match is None:
@@ -132,15 +132,15 @@ class YesNoQuitInteraction (Interaction):
 class FreeEntryInteraction (Interaction):
     """ I describe a prompt to enter some free text. """
     def answer (self, ans):
-        checkPendingInteraction (self.player, self)
-        self.player.pendingInteraction = None
-        self.player.sendline (ans)
-        return self.player.watch()
+        checkPendingInteraction (self.server, self)
+        self.server.pendingInteraction = None
+        self.server.sendline (ans)
+        return self.server.watch()
 
 class SelectInteraction (Interaction):
     """ I describe a question where the user should select an item, usually from the inventory """
-    def __init__ (self, player, question):
-        super (SelectInteraction, self).__init__ (player, question)
+    def __init__ (self, server, question):
+        super (SelectInteraction, self).__init__ (server, question)
         match = re.match (r'(?P<question>.*) \[(?P<opts>.*) or \?\*\] ', question)
         if not match is None:
             self.question = match.group ('question')
@@ -148,26 +148,26 @@ class SelectInteraction (Interaction):
         else:
             self.options = []
     def answer (self, item):
-        checkPendingInteraction (self.player, self)
-        self.player.pendingInteraction = None
-        self.player.send (item.key)
-        return self.player.watch(selectDialogQuestion=self.question)
+        checkPendingInteraction (self.server, self)
+        self.server.pendingInteraction = None
+        self.server.send (item.key)
+        return self.server.watch(selectDialogQuestion=self.question)
 
 class SelectDialogInteraction (Interaction):
     """ I describe a list of options from which you can select one or many alternatives.
         MultiSelect and SingleSelect dialogs aren't distinguishable at sight, so you need
         to tell me if I should treat this as a MultiSelect or a SingleSelect when you go to
         answer the question."""
-    def __init__ (self, server, player, question=None):
+    def __init__ (self, server, question=None):
         """ If question is None, I suppose it's on the first line of the screen. """
-        Interaction.__init__(self, player, question)
+        Interaction.__init__(self, server, question)
         self.server = server
         if question is None:
-            self.question = self.server.screen.getRow(0).strip()
+            self.question = self.server.getRow(0).strip()
         matched = self.server.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
         if matched is None:
             raise ValueError, "No multiple selection dialog visible"
-        lines = self.server.screen.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
+        lines = self.server.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
         opts = []
         more_pages = True
         totalPages = 0
@@ -190,11 +190,11 @@ class SelectDialogInteraction (Interaction):
                 currentPage, totalPages = self.parseMOfN (matched)
                 print "Page", currentPage, "of", totalPages
                 if currentPage < totalPages:
-                    self.player.send ('>')
-                    matched = self.player.watch(['\(end\) ', '\(\d of \d\) '])
+                    self.server.send ('>')
+                    matched = self.server.watch(['\(end\) ', '\(\d of \d\) '])
                     if matched is None:
                         raise ValueError, "No multiple selection dialog visible"
-                    lines = self.server.screen.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
+                    lines = self.screen.getArea (self.server.screen.cursorX - len(matched), 0, h=self.server.screen.cursorY)
                 else:
                     more_pages = False
             else:
@@ -202,15 +202,15 @@ class SelectDialogInteraction (Interaction):
         # Return to the first page
         for i in range(totalPages - 1):
             self.send ('<')
-            self.player.watch (['\(end\) ', '\(\d of \d\) '])
+            self.server.watch (['\(end\) ', '\(\d of \d\) '])
         self.options = opts
 
     def answer (self, items):
         """ 'items': can be a single Item, or a list of Items.
             if it's a single Item then the dialog is treated as a SingleSelect dialog.
             if you pass in a list of items, I treat the list as a MultiSelect dialog."""
-        checkPendingInteraction (self.player, self)
-        self.player.pendingInteraction = None
+        checkPendingInteraction (self.server, self)
+        self.server.pendingInteraction = None
         if isinstance (items, list):
             match = self.server.screen.multiMatch (['\(end\) ', '\(\d of \d\) '])
             if match == '(end) ':
@@ -221,8 +221,8 @@ class SelectDialogInteraction (Interaction):
                     raise ValueError, "I shouldn't be asked to answer an interaction when not on the first page of a dialog."
             for page in range(totalPages):
                 for i in items:
-                    self.player.send (i.key)
-                self.player.send (' ')
+                    self.server.send (i.key)
+                self.server.send (' ')
         else:
-            self.player.send (items.key)
-        return self.player.watch()
+            self.server.send (items.key)
+        return self.server.watch()

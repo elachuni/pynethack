@@ -1,0 +1,25 @@
+What do you want to eat? [def or ?*] 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            --+------
+                            |...@d(..
+                            |.......|
+                            ..".....|
+                            ---------
+
+Anthony the Stripling       St:15 Dx:13 Co:18 In:11 Wi:10 Ch:8  Lawful
+Dlvl:1  $:0  HP:16(16) Pw:2(2) AC:6  Exp:1
+
