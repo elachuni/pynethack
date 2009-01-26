@@ -127,20 +127,26 @@ class NetHackPlayer(object):
         self.send (keys.dirs[direction])
         return self.watch()
 
-    def quaff (self, potion=Item('*')):
+    def quaff (self, potion=None):
         """ Quaff a potion.
             'potion' should have been retrieved from our inventory recently.
             If you leave 'potion' as default, a SelectDialogInteraction will return"""
+        if not isinstance(potion, Item):
+            raise ValueError ('Expected an Item')
         self.send ('q')
         matched = self.watch()
         if isinstance (matched, SelectInteraction):
             matched = matched.answer (potion)
         return matched
 
-    def eat (self, food=Item('*')):
+    def eat (self, food=None):
         """ Eat something.
             'food' should have been retrieved from our inventory recently.
             If you leave 'potion' as default, a SelectDialogInteraction will return """
+        if food is None:
+            food = Item('*')
+        if not isinstance(food, Item):
+            raise ValueError ('Expected an Item')
         self.send ('e')
         matched = self.watch()
         if isinstance (matched, SelectInteraction):
@@ -228,27 +234,39 @@ class NetHackPlayer(object):
         self.send (',')
         return self.watch ()
 
-    def takeOff (self, item=Item('*')):
+    def takeOff (self, item=None):
         """ Take off a garment.
             If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        if item is None:
+            item = Item('*')
+        if not isinstance(item, Item):
+            raise ValueError ('Expected an Item')
         self.send ('T')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'take off' in matched.question:
             matched = matched.answer (item)
         return matched
 
-    def quiver (self, item=Item('*')):
+    def quiver (self, item=None):
         """ Ready an item in your quiver to be able to fire it using the 'fire' method.
             If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        if item is None:
+            item = Item('*')
+        if not isinstance(item, Item):
+            raise ValueError ('Expected an Item')
         self.send ('Q')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'ready' in matched.question:
             matched = matched.answer (item)
         return matched
 
-    def wear (self, item=Item('*')):
+    def wear (self, item=None):
         """ Put on a piece of clothing.
             If no 'item' is passed in, a SelectDialogInteraction is returned. """
+        if item is None:
+            item = Item('*')
+        if not isinstance(item, Item):
+            raise ValueError ('Expected an Item')
         self.send ('W')
         matched = self.watch()
         if isinstance (matched, SelectInteraction) and 'wear' in matched.question:

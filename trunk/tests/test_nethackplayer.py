@@ -70,9 +70,50 @@ class TestBasicFunctions (unittest.TestCase):
         self.assertEquals(4, len(m.options))
         m.answerDefault()
 
+    def testClothes(self):
+        self.assertRaises(ValueError, self.np.takeOff, 'b')
+        info = self.np.takeOff(self.np.inventory()['b'])
+        self.assertTrue('You were wearing' in info.message[0])
+        self.assertRaises(ValueError, self.np.wear, 'b')
+        info = self.np.wear(self.np.inventory()['b'])
+        self.assertTrue('You are now wearing' in info.message[0])
+
+class TestFood (unittest.TestCase):
+    def setUp(self):
+        self.np = unserialize('scenarios/food.nh')
+        self.np.server.echo = False
+    def tearDown(self):
+        if self.np.server.pendingInteraction:
+            self.np.server.pendingInteraction.answerDefault()
+        self.np.quit()
+    def testFood(self):
+        food = self.np.inventory('Comestibles').keys()[0]
+        self.assertRaises(ValueError, self.np.eat, food)
+        info = self.np.eat(self.np.inventory()[food])
+        self.assertTrue('Core dumped' in info.message[0])
+
+class TestDrink (unittest.TestCase):
+    def setUp(self):
+        self.np = unserialize('scenarios/fountain.nh')
+        self.np.server.echo = False
+    def tearDown(self):
+        while self.np.server.pendingInteraction:
+            self.np.server.pendingInteraction.answerDefault()
+        self.np.quit()
+    def testDrink(self):
+        drink = self.np.inventory('Potions').values()[0]
+        self.assertRaises(ValueError, self.np.quaff, drink.key)
+        q = self.np.quaff(drink) # Drink from the fountain?
+        info = q.answer('y')
+        self.np.go('S')
+        self.np.quaff(drink)
+        
+
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(TestBasicFunctions))
+    suite.addTest(unittest.makeSuite(TestFood))
+    suite.addTest(unittest.makeSuite(TestDrink))
     return suite
 
 if __name__ == '__main__':
